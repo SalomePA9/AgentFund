@@ -44,10 +44,19 @@ class StockResponse(BaseModel):
     eps: float | None = None
     beta: float | None = None
     dividend_yield: float | None = None
-    # Factor scores (populated in Phase 1.3)
+    # Quality metrics
+    roe: float | None = None
+    profit_margin: float | None = None
+    debt_to_equity: float | None = None
+    # Momentum metrics
+    momentum_6m: float | None = None
+    momentum_12m: float | None = None
+    # Factor scores (0-100)
     momentum_score: float | None = None
     value_score: float | None = None
     quality_score: float | None = None
+    dividend_score: float | None = None
+    volatility_score: float | None = None
     composite_score: float | None = None
     # Sentiment scores (populated in Phase 2.1)
     news_sentiment: float | None = None
@@ -55,19 +64,44 @@ class StockResponse(BaseModel):
     combined_sentiment: float | None = None
     sentiment_velocity: float | None = None
     updated_at: str | None = None
+    scores_updated_at: str | None = None
 
 
 class ScreenRequest(BaseModel):
     """Schema for stock screening request."""
 
+    # Strategy preset name (momentum, quality_value, quality_momentum, dividend_growth,
+    # trend_following, short_term_reversal, statistical_arbitrage, volatility_premium)
     strategy_type: str | None = None
+
+    # Filter criteria
     min_market_cap: int | None = None
+    max_market_cap: int | None = None
     sectors: list[str] | None = None
+    exclude_sectors: list[str] | None = None
+
+    # Score filters (0-100)
     min_momentum_score: float | None = None
     min_value_score: float | None = None
     min_quality_score: float | None = None
+    min_dividend_score: float | None = None
+    min_volatility_score: float | None = None
+    min_composite_score: float | None = None
+
+    # Price/MA filters
     above_ma_200: bool = True
+    above_ma_100: bool = False
+    above_ma_30: bool = False
+
+    # Additional filters
+    min_price: float | None = None
+    max_price: float | None = None
+    min_volume: int | None = None
+
+    # Result options
     limit: int = 20
+    sort_by: str = "composite_score"  # Field to sort results by
+    sort_desc: bool = True
 
 
 class SentimentResponse(BaseModel):
@@ -152,59 +186,131 @@ async def screen_stocks(
     current_user: Annotated[dict, Depends(get_current_user)],
     db: Annotated[Client, Depends(get_db)],
 ):
-    """Screen stocks based on criteria."""
+    """
+    Screen stocks based on strategy type and custom criteria.
+
+    Supported strategy_type values:
+    - momentum: High momentum stocks (momentum_score >= 80)
+    - quality_value: Value stocks with quality (value >= 70, quality >= 60)
+    - quality_momentum: Momentum with quality filter (momentum >= 70, quality >= 60)
+    - dividend_growth: Dividend stocks with quality (yield >= 2%, quality >= 50)
+    - trend_following: Stocks in strong uptrends (price > all MAs, momentum >= 60)
+    - short_term_reversal: Oversold quality stocks (volatility >= 70, quality >= 50)
+    - statistical_arbitrage: Low volatility quality stocks (volatility >= 60, quality >= 60)
+    - volatility_premium: Low volatility high quality (volatility >= 70, quality >= 70)
+    """
     query = db.table("stocks").select("*")
 
-    # Apply filters
+    # Apply market cap filters
     if screen.min_market_cap:
         query = query.gte("market_cap", screen.min_market_cap)
+    if screen.max_market_cap:
+        query = query.lte("market_cap", screen.max_market_cap)
 
+    # Apply sector filters
     if screen.sectors:
         query = query.in_("sector", screen.sectors)
 
+    # Apply price filters
+    if screen.min_price:
+        query = query.gte("price", screen.min_price)
+    if screen.max_price:
+        query = query.lte("price", screen.max_price)
+
+    # Apply volume filter
+    if screen.min_volume:
+        query = query.gte("avg_volume", screen.min_volume)
+
+    # Apply score filters (user-specified)
     if screen.min_momentum_score is not None:
         query = query.gte("momentum_score", screen.min_momentum_score)
-
     if screen.min_value_score is not None:
         query = query.gte("value_score", screen.min_value_score)
-
     if screen.min_quality_score is not None:
         query = query.gte("quality_score", screen.min_quality_score)
+    if screen.min_dividend_score is not None:
+        query = query.gte("dividend_score", screen.min_dividend_score)
+    if screen.min_volatility_score is not None:
+        query = query.gte("volatility_score", screen.min_volatility_score)
+    if screen.min_composite_score is not None:
+        query = query.gte("composite_score", screen.min_composite_score)
 
-    # Strategy-specific defaults
+    # Strategy-specific defaults and sorting
+    sort_field = screen.sort_by
+    sort_desc = screen.sort_desc
+
     if screen.strategy_type == "momentum":
+        # Pure momentum: high momentum score
         query = query.gte("momentum_score", 80)
-        query = query.order("momentum_score", desc=True)
+        sort_field = "momentum_score"
     elif screen.strategy_type == "quality_value":
+        # Value + Quality: cheap stocks that are fundamentally sound
         query = query.gte("value_score", 70)
         query = query.gte("quality_score", 60)
-        query = query.order("value_score", desc=True)
+        sort_field = "value_score"
     elif screen.strategy_type == "quality_momentum":
+        # Momentum + Quality: trending stocks with good fundamentals
         query = query.gte("momentum_score", 70)
         query = query.gte("quality_score", 60)
-        query = query.order("momentum_score", desc=True)
+        sort_field = "momentum_score"
     elif screen.strategy_type == "dividend_growth":
+        # Dividend stocks with quality
         query = query.gte("dividend_yield", 0.02)
         query = query.gte("quality_score", 50)
-        query = query.order("dividend_yield", desc=True)
-    else:
-        query = query.order("composite_score", desc=True)
+        sort_field = "dividend_score"
+    elif screen.strategy_type == "trend_following":
+        # Strong uptrends: price above all MAs, good momentum
+        query = query.gte("momentum_score", 60)
+        screen.above_ma_200 = True
+        screen.above_ma_100 = True
+        screen.above_ma_30 = True
+        sort_field = "momentum_score"
+    elif screen.strategy_type == "short_term_reversal":
+        # Oversold stocks: high volatility, quality filter
+        query = query.gte("volatility_score", 70)
+        query = query.gte("quality_score", 50)
+        sort_field = "volatility_score"
+    elif screen.strategy_type == "statistical_arbitrage":
+        # Low volatility quality stocks
+        query = query.gte("volatility_score", 60)
+        query = query.gte("quality_score", 60)
+        sort_field = "quality_score"
+    elif screen.strategy_type == "volatility_premium":
+        # Low volatility, high quality
+        query = query.gte("volatility_score", 70)
+        query = query.gte("quality_score", 70)
+        sort_field = "volatility_score"
 
-    # Above 200-day MA filter
-    if screen.above_ma_200:
-        # This requires price > ma_200, handled in post-processing
-        pass
+    # Apply sorting
+    query = query.order(sort_field, desc=sort_desc)
 
-    result = query.limit(screen.limit * 2).execute()  # Fetch extra for filtering
+    # Fetch extra for post-filtering
+    result = query.limit(screen.limit * 3).execute()
+    filtered = result.data
 
-    # Post-process: filter price > ma_200
+    # Post-process: MA filters (price > MA)
     if screen.above_ma_200:
         filtered = [
-            s for s in result.data
+            s for s in filtered
             if s.get("price") and s.get("ma_200") and s["price"] > s["ma_200"]
         ]
-    else:
-        filtered = result.data
+    if screen.above_ma_100:
+        filtered = [
+            s for s in filtered
+            if s.get("price") and s.get("ma_100") and s["price"] > s["ma_100"]
+        ]
+    if screen.above_ma_30:
+        filtered = [
+            s for s in filtered
+            if s.get("price") and s.get("ma_30") and s["price"] > s["ma_30"]
+        ]
+
+    # Post-process: exclude sectors
+    if screen.exclude_sectors:
+        filtered = [
+            s for s in filtered
+            if s.get("sector") not in screen.exclude_sectors
+        ]
 
     return filtered[: screen.limit]
 
@@ -262,3 +368,100 @@ async def list_sectors(
     sectors.sort()
 
     return {"sectors": sectors}
+
+
+class PositionSizeRequest(BaseModel):
+    """Request for position sizing calculation."""
+
+    symbol: str
+    capital: float
+    risk_per_trade: float = 0.01  # 1% risk per trade
+    stop_price: float | None = None  # Fixed stop price
+    use_atr_stop: bool = True  # Use ATR-based stop
+    atr_multiplier: float = 2.0  # ATR multiplier for stop
+    max_position_pct: float = 0.10  # Max 10% of capital per position
+
+
+class PositionSizeResponse(BaseModel):
+    """Response for position sizing calculation."""
+
+    symbol: str
+    shares: int
+    position_value: float
+    position_pct: float
+    entry_price: float
+    stop_price: float
+    risk_amount: float
+    atr: float | None
+    error: str | None = None
+
+
+@router.post("/position-size", response_model=PositionSizeResponse)
+async def calculate_position_size(
+    request: PositionSizeRequest,
+    current_user: Annotated[dict, Depends(get_current_user)],
+    db: Annotated[Client, Depends(get_db)],
+):
+    """
+    Calculate position size based on risk parameters.
+
+    Uses ATR-based or fixed stop loss for position sizing.
+    Ensures position doesn't exceed max percentage of capital.
+    """
+    from core.factors import calculate_position_size as calc_size
+
+    # Get stock data
+    result = db.table("stocks").select("price, atr").eq("symbol", request.symbol.upper()).execute()
+
+    if not result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stock {request.symbol} not found",
+        )
+
+    stock = result.data[0]
+    entry_price = stock.get("price")
+    atr = stock.get("atr")
+
+    if not entry_price:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No price data for {request.symbol}",
+        )
+
+    # Calculate position size
+    if request.use_atr_stop and atr:
+        sizing = calc_size(
+            capital=request.capital,
+            risk_per_trade=request.risk_per_trade,
+            entry_price=entry_price,
+            stop_price=entry_price - (atr * request.atr_multiplier),
+            atr=atr,
+            atr_multiplier=request.atr_multiplier,
+            max_position_pct=request.max_position_pct,
+        )
+    elif request.stop_price:
+        sizing = calc_size(
+            capital=request.capital,
+            risk_per_trade=request.risk_per_trade,
+            entry_price=entry_price,
+            stop_price=request.stop_price,
+            max_position_pct=request.max_position_pct,
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either use_atr_stop with ATR data or provide stop_price",
+        )
+
+    return PositionSizeResponse(
+        symbol=request.symbol.upper(),
+        shares=sizing["shares"],
+        position_value=sizing["position_value"],
+        position_pct=sizing["position_pct"],
+        entry_price=entry_price,
+        stop_price=sizing["stop_price"],
+        risk_amount=sizing["risk_amount"],
+        atr=atr,
+        error=sizing.get("error"),
+    )

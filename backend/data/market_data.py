@@ -199,6 +199,26 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         avg_volume = hist['Volume'].mean() if len(hist) > 0 else None
         volume_today = hist['Volume'].iloc[-1] if len(hist) > 0 else None
 
+        # Calculate momentum metrics
+        momentum_6m = None
+        momentum_12m = None
+        if len(hist) >= 126:
+            price_6m_ago = hist['Close'].iloc[-126]
+            momentum_6m = ((current_price - price_6m_ago) / price_6m_ago) if price_6m_ago > 0 else None
+        if len(hist) >= 252:
+            price_12m_ago = hist['Close'].iloc[-252]
+            momentum_12m = ((current_price - price_12m_ago) / price_12m_ago) if price_12m_ago > 0 else None
+
+        # Extract quality metrics
+        roe = info.get("returnOnEquity")  # As decimal (0.15 = 15%)
+        profit_margin = info.get("profitMargins")  # As decimal
+        debt_to_equity = info.get("debtToEquity")  # As ratio (e.g., 50 = 0.5)
+        if debt_to_equity:
+            debt_to_equity = debt_to_equity / 100  # Convert to decimal
+
+        # Dividend growth (approximate from payout history if available)
+        dividend_growth_5y = info.get("fiveYearAvgDividendYield")
+
         return {
             "symbol": ticker,
             "name": info.get("shortName") or info.get("longName") or ticker,
@@ -220,6 +240,15 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
             "low_52w": round(low_52w, 2) if low_52w else None,
             "avg_volume": int(avg_volume) if avg_volume else None,
             "volume": int(volume_today) if volume_today else None,
+            # Quality metrics for factor scoring
+            "roe": round(roe, 4) if roe and not pd.isna(roe) else None,
+            "profit_margin": round(profit_margin, 4) if profit_margin and not pd.isna(profit_margin) else None,
+            "debt_to_equity": round(debt_to_equity, 4) if debt_to_equity and not pd.isna(debt_to_equity) else None,
+            # Momentum metrics
+            "momentum_6m": round(momentum_6m, 4) if momentum_6m and not pd.isna(momentum_6m) else None,
+            "momentum_12m": round(momentum_12m, 4) if momentum_12m and not pd.isna(momentum_12m) else None,
+            # Dividend growth
+            "dividend_growth_5y": round(dividend_growth_5y, 4) if dividend_growth_5y and not pd.isna(dividend_growth_5y) else None,
             "updated_at": datetime.utcnow().isoformat(),
         }
 

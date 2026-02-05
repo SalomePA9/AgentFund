@@ -1,6 +1,6 @@
 """
 Market Data Scheduled Job
-Runs daily to update stock prices, moving averages, and fundamentals.
+Runs daily to update stock prices, moving averages, fundamentals, and factor scores.
 """
 
 import asyncio
@@ -15,6 +15,7 @@ from data.market_data import (
     get_stock_universe,
     run_market_data_update,
 )
+from jobs.factor_scoring_job import run_factor_scoring_job
 
 # Configure logging
 logging.basicConfig(
@@ -67,6 +68,21 @@ async def run_daily_market_update():
         # Calculate success rate
         success_rate = (summary['fetch_success'] / summary['total_tickers']) * 100
         logger.info(f"Success rate: {success_rate:.1f}%")
+
+        # Run factor scoring job after market data update
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("STARTING FACTOR SCORING JOB")
+        logger.info("=" * 60)
+
+        factor_summary = await run_factor_scoring_job()
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("FACTOR SCORING SUMMARY")
+        logger.info("=" * 60)
+        for key, value in factor_summary.items():
+            logger.info(f"{key}: {value}")
 
         # Return exit code based on success rate
         if success_rate >= 90:
