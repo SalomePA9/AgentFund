@@ -94,3 +94,6 @@ docker-compose.override.yml
 tmp/
 temp/
 .cache/
+
+# TypeScript build info
+*.tsbuildinfo
