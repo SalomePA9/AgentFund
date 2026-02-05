@@ -8,8 +8,6 @@ from supabase import Client, create_client
 
 from config import get_settings
 
-_supabase_client: Client | None = None
-
 
 @lru_cache
 def get_supabase_client() -> Client:

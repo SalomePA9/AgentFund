@@ -158,11 +158,8 @@ class TestAuthEndpoints:
     @pytest.mark.api
     def test_register_success(self, client, mock_db):
         """Test successful user registration."""
-        # Configure mock to return no existing user, then return created user
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
-            []
-        )
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
+        # Configure mock data - no existing user, then return created user
+        mock_db._tables_data["users"] = [
             {
                 "id": "new-user-id",
                 "email": "newuser@example.com",
@@ -183,9 +180,7 @@ class TestAuthEndpoints:
     def test_register_duplicate_email(self, client, mock_db):
         """Test registration with existing email."""
         # Configure mock to return existing user
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            {"id": "existing-user"}
-        ]
+        mock_db._tables_data["users"] = [{"id": "existing-user"}]
 
         response = client.post(
             "/api/auth/register",
@@ -203,10 +198,7 @@ class TestAuthEndpoints:
         # Create user with known password hash
         password = "test_password_123"
         sample_user["password_hash"] = get_password_hash(password)
-
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
 
         response = client.post(
             "/api/auth/login",
@@ -224,10 +216,7 @@ class TestAuthEndpoints:
         from api.auth import get_password_hash
 
         sample_user["password_hash"] = get_password_hash("correct_password")
-
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
 
         response = client.post(
             "/api/auth/login",
@@ -239,9 +228,7 @@ class TestAuthEndpoints:
     @pytest.mark.api
     def test_login_nonexistent_user(self, client, mock_db):
         """Test login with non-existent user."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
-            []
-        )
+        mock_db._tables_data["users"] = []
 
         response = client.post(
             "/api/auth/login",
@@ -253,9 +240,7 @@ class TestAuthEndpoints:
     @pytest.mark.api
     def test_get_current_user(self, client, mock_db, sample_user, auth_headers):
         """Test getting current user info."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
 
         response = client.get("/api/auth/me", headers=auth_headers)
 
@@ -271,8 +256,10 @@ class TestAuthEndpoints:
         assert response.status_code == 401
 
     @pytest.mark.api
-    def test_get_current_user_invalid_token(self, client):
+    def test_get_current_user_invalid_token(self, client, mock_db):
         """Test getting user info with invalid token."""
+        mock_db._tables_data["users"] = []
+
         response = client.get(
             "/api/auth/me", headers={"Authorization": "Bearer invalid-token"}
         )

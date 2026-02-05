@@ -75,26 +75,9 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_agents, auth_headers, sample_user
     ):
         """Test listing agents."""
-        # First mock for auth
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-
-        # Then mock for agents list (need to reset after first call)
-        def side_effect(*args, **kwargs):
-            response = MagicMock()
-            if "agents" in str(args) or "agents" in str(kwargs):
-                response.data = sample_agents
-            else:
-                response.data = [sample_user]
-            return response
-
-        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.side_effect = (
-            side_effect
-        )
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
-            sample_agents
-        )
+        # Configure mock data per table
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = sample_agents
 
         response = client.get("/api/agents", headers=auth_headers)
 
@@ -110,12 +93,7 @@ class TestAgentEndpoints:
     @pytest.mark.api
     def test_create_agent_valid(self, client, mock_db, sample_user, auth_headers):
         """Test creating a valid agent."""
-        # Mock user lookup
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-
-        # Mock agent insert
+        # Configure mock data per table
         created_agent = {
             "id": "new-agent-id",
             "user_id": sample_user["id"],
@@ -132,15 +110,15 @@ class TestAgentEndpoints:
             "end_date": "2024-07-01",
             "total_value": 10000.00,
             "total_return_pct": 0.0,
+            "daily_return_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown_pct": 0.0,
+            "win_rate_pct": 0.0,
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-01T00:00:00Z",
         }
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
-            created_agent
-        ]
-        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [created_agent]
 
         response = client.post(
             "/api/agents",
@@ -162,9 +140,7 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_user, auth_headers
     ):
         """Test creating agent with invalid strategy type."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
 
         response = client.post(
             "/api/agents",
@@ -185,9 +161,7 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_user, auth_headers
     ):
         """Test creating agent with invalid persona."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
 
         response = client.post(
             "/api/agents",
@@ -209,14 +183,8 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_agent, sample_user, auth_headers
     ):
         """Test getting a specific agent."""
-        # Mock auth
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        # Mock agent lookup (chained eq for user_id)
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            sample_agent
-        ]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [sample_agent]
 
         response = client.get(f"/api/agents/{sample_agent['id']}", headers=auth_headers)
 
@@ -225,12 +193,8 @@ class TestAgentEndpoints:
     @pytest.mark.api
     def test_get_agent_not_found(self, client, mock_db, sample_user, auth_headers):
         """Test getting non-existent agent."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
-            []
-        )
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = []
 
         response = client.get(
             "/api/agents/00000000-0000-0000-0000-000000000000", headers=auth_headers
@@ -243,15 +207,10 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_agent, sample_user, auth_headers
     ):
         """Test pausing an agent."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-
         paused_agent = {**sample_agent, "status": "paused"}
-        mock_db.table.return_value.update.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            paused_agent
-        ]
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [paused_agent]
+        mock_db._tables_data["agent_activity"] = [{}]
 
         response = client.post(
             f"/api/agents/{sample_agent['id']}/pause", headers=auth_headers
@@ -265,15 +224,10 @@ class TestAgentEndpoints:
     ):
         """Test resuming a paused agent."""
         sample_agent["status"] = "paused"
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-
         resumed_agent = {**sample_agent, "status": "active"}
-        mock_db.table.return_value.update.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            resumed_agent
-        ]
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [resumed_agent]
+        mock_db._tables_data["agent_activity"] = [{}]
 
         response = client.post(
             f"/api/agents/{sample_agent['id']}/resume", headers=auth_headers
@@ -286,18 +240,8 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_agent, sample_user, auth_headers
     ):
         """Test deleting an agent."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            sample_agent
-        ]
-        mock_db.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = (
-            []
-        )
-        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [sample_agent]
 
         response = client.delete(
             f"/api/agents/{sample_agent['id']}", headers=auth_headers
@@ -310,12 +254,9 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_agent, sample_positions, sample_user, auth_headers
     ):
         """Test getting agent positions."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = (
-            sample_positions
-        )
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [sample_agent]
+        mock_db._tables_data["positions"] = sample_positions
 
         response = client.get(
             f"/api/agents/{sample_agent['id']}/positions", headers=auth_headers
@@ -328,12 +269,9 @@ class TestAgentEndpoints:
         self, client, mock_db, sample_agent, sample_activity, sample_user, auth_headers
     ):
         """Test getting agent activity log."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.range.return_value.execute.return_value.data = [
-            sample_activity
-        ]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [sample_agent]
+        mock_db._tables_data["agent_activity"] = [sample_activity]
 
         response = client.get(
             f"/api/agents/{sample_agent['id']}/activity", headers=auth_headers

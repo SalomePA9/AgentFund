@@ -72,41 +72,64 @@ async def async_client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 # ============================================
 
 
+class MockTableBuilder:
+    """
+    A smarter mock table builder that tracks table name and can be configured
+    to return different data per table.
+    """
+
+    def __init__(self, table_name: str, tables_data: dict):
+        self.table_name = table_name
+        self.tables_data = tables_data
+        self._mock = MagicMock()
+
+    def __getattr__(self, name):
+        # Return self for chainable methods
+        if name in [
+            "select",
+            "insert",
+            "update",
+            "delete",
+            "eq",
+            "neq",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "in_",
+            "order",
+            "limit",
+            "range",
+        ]:
+            return lambda *args, **kwargs: self
+        if name == "execute":
+            return self._execute
+        return getattr(self._mock, name)
+
+    def _execute(self):
+        response = MagicMock()
+        response.data = self.tables_data.get(self.table_name, [])
+        response.count = len(response.data)
+        return response
+
+
 @pytest.fixture
 def mock_supabase():
     """
     Create a mock Supabase client.
 
     This fixture provides a fully mocked Supabase client that can be
-    configured to return specific data for each test.
+    configured to return specific data for each test via tables_data dict.
     """
     mock_client = MagicMock()
 
-    # Mock table operations
-    mock_table = MagicMock()
-    mock_client.table.return_value = mock_table
+    # Store data per table - tests can modify this
+    mock_client._tables_data = {}
 
-    # Chain-able methods
-    mock_table.select.return_value = mock_table
-    mock_table.insert.return_value = mock_table
-    mock_table.update.return_value = mock_table
-    mock_table.delete.return_value = mock_table
-    mock_table.eq.return_value = mock_table
-    mock_table.neq.return_value = mock_table
-    mock_table.gt.return_value = mock_table
-    mock_table.gte.return_value = mock_table
-    mock_table.lt.return_value = mock_table
-    mock_table.lte.return_value = mock_table
-    mock_table.in_.return_value = mock_table
-    mock_table.order.return_value = mock_table
-    mock_table.limit.return_value = mock_table
-    mock_table.range.return_value = mock_table
+    def table_factory(table_name: str):
+        return MockTableBuilder(table_name, mock_client._tables_data)
 
-    # Default execute response
-    mock_response = MagicMock()
-    mock_response.data = []
-    mock_response.count = 0
-    mock_table.execute.return_value = mock_response
+    mock_client.table.side_effect = table_factory
 
     return mock_client
 
@@ -116,7 +139,9 @@ def mock_db(mock_supabase):
     """Patch the database module to use mock client."""
     with patch("database.get_supabase_client", return_value=mock_supabase):
         with patch("database.get_db", return_value=mock_supabase):
-            yield mock_supabase
+            with patch("api.auth.get_db", return_value=mock_supabase):
+                with patch("api.agents.get_db", return_value=mock_supabase):
+                    yield mock_supabase
 
 
 # ============================================
@@ -250,6 +275,9 @@ def sample_agents(sample_user) -> list[dict]:
                 "total_value": 25000.00 + i * 500,
                 "total_return_pct": 2.0 + i * 1.5,
                 "daily_return_pct": 0.1 * (i + 1),
+                "sharpe_ratio": 1.0 + i * 0.2,
+                "max_drawdown_pct": 5.0 + i * 1.0,
+                "win_rate_pct": 55.0 + i * 5.0,
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
             }
@@ -303,6 +331,7 @@ def sample_positions(sample_agent) -> list[dict]:
         entry_price = 100.0 + i * 50
         current_price = entry_price * (1 + (i - 2) * 0.05)
         shares = 10 - i
+        is_closed = i >= 4
 
         positions.append(
             {
@@ -319,7 +348,12 @@ def sample_positions(sample_agent) -> list[dict]:
                 "current_value": current_price * shares,
                 "unrealized_pnl": (current_price - entry_price) * shares,
                 "unrealized_pnl_pct": ((current_price / entry_price) - 1) * 100,
-                "status": "open" if i < 4 else "closed_target",
+                "status": "open" if not is_closed else "closed_target",
+                "exit_price": current_price if is_closed else None,
+                "exit_date": date.today().isoformat() if is_closed else None,
+                "exit_rationale": "Target reached" if is_closed else None,
+                "realized_pnl": (current_price - entry_price) * shares if is_closed else None,
+                "realized_pnl_pct": ((current_price / entry_price) - 1) * 100 if is_closed else None,
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
             }
@@ -604,9 +638,8 @@ def configure_mock_table(mock_client, table_name: str, data: list):
     Usage:
         configure_mock_table(mock_supabase, "users", [sample_user])
     """
-    mock_response = MockSupabaseResponse(data=data)
-    mock_client.table.return_value.execute.return_value = mock_response
-    return mock_response
+    mock_client._tables_data[table_name] = data
+    return data
 
 
 @pytest.fixture
