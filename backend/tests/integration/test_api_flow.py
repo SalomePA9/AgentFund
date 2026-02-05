@@ -4,7 +4,6 @@ Integration tests for complete API flows.
 These tests verify end-to-end functionality across multiple endpoints.
 """
 
-from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -20,11 +19,25 @@ class TestUserRegistrationFlow:
         email = "integration@test.com"
         password = "secure_password_123"
 
-        # 1. Register
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
-            []
-        )
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
+        from api.auth import get_password_hash
+
+        hashed = get_password_hash(password)
+
+        # User data for the flow
+        user_data = {
+            "id": user_id,
+            "email": email,
+            "password_hash": hashed,
+            "total_capital": 0,
+            "allocated_capital": 0,
+            "settings": {},
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+        }
+
+        # 1. Register - empty for existence check, return created user for insert
+        mock_db._tables_data["users"] = []
+        mock_db._insert_data["users"] = [
             {
                 "id": user_id,
                 "email": email,
@@ -37,23 +50,8 @@ class TestUserRegistrationFlow:
         )
         assert register_response.status_code == 201
 
-        # 2. Login
-        from api.auth import get_password_hash
-
-        hashed = get_password_hash(password)
-
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            {
-                "id": user_id,
-                "email": email,
-                "password_hash": hashed,
-                "total_capital": 0,
-                "allocated_capital": 0,
-                "settings": {},
-                "created_at": "2024-01-01T00:00:00Z",
-                "updated_at": "2024-01-01T00:00:00Z",
-            }
-        ]
+        # 2. Login - need user with password hash
+        mock_db._tables_data["users"] = [user_data]
 
         login_response = client.post(
             "/api/auth/login", data={"username": email, "password": password}
@@ -79,12 +77,7 @@ class TestAgentLifecycleFlow:
         """Test full agent lifecycle: create -> pause -> resume -> delete."""
         agent_id = str(uuid4())
 
-        # Setup common mocks
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-
-        # 1. Create Agent
+        # Base agent data
         created_agent = {
             "id": agent_id,
             "user_id": sample_user["id"],
@@ -101,15 +94,18 @@ class TestAgentLifecycleFlow:
             "end_date": "2024-07-01",
             "total_value": 10000.00,
             "total_return_pct": 0.0,
+            "daily_return_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown_pct": 0.0,
+            "win_rate_pct": 0.0,
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-01T00:00:00Z",
         }
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
-            created_agent
-        ]
-        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+
+        # 1. Create Agent
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [created_agent]
+        mock_db._insert_data["agents"] = [created_agent]
 
         create_response = client.post(
             "/api/agents",
@@ -126,9 +122,8 @@ class TestAgentLifecycleFlow:
 
         # 2. Pause Agent
         paused_agent = {**created_agent, "status": "paused"}
-        mock_db.table.return_value.update.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            paused_agent
-        ]
+        mock_db._tables_data["agents"] = [paused_agent]
+        mock_db._insert_data["agent_activity"] = [{}]
 
         pause_response = client.post(
             f"/api/agents/{agent_id}/pause", headers=auth_headers
@@ -137,9 +132,7 @@ class TestAgentLifecycleFlow:
 
         # 3. Resume Agent
         resumed_agent = {**created_agent, "status": "active"}
-        mock_db.table.return_value.update.return_value.eq.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            resumed_agent
-        ]
+        mock_db._tables_data["agents"] = [resumed_agent]
 
         resume_response = client.post(
             f"/api/agents/{agent_id}/resume", headers=auth_headers
@@ -147,12 +140,7 @@ class TestAgentLifecycleFlow:
         assert resume_response.status_code == 200
 
         # 4. Delete Agent
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            created_agent
-        ]
-        mock_db.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = (
-            []
-        )
+        mock_db._tables_data["agents"] = [created_agent]
 
         delete_response = client.delete(f"/api/agents/{agent_id}", headers=auth_headers)
         assert delete_response.status_code == 204
@@ -167,19 +155,12 @@ class TestChatFlow:
     ):
         """Test sending messages and getting chat history."""
         # Setup mocks
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
-            sample_agent
-        ]
-
-        # 1. Send message
         user_message = {
             "id": str(uuid4()),
             "agent_id": sample_agent["id"],
             "role": "user",
             "message": "How is my portfolio doing?",
+            "context_used": None,
             "created_at": "2024-01-01T00:00:00Z",
         }
         agent_response = {
@@ -187,28 +168,16 @@ class TestChatFlow:
             "agent_id": sample_agent["id"],
             "role": "agent",
             "message": "Your portfolio is performing well...",
+            "context_used": {},
             "created_at": "2024-01-01T00:00:01Z",
         }
 
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
-            user_message
-        ]
-
-        # Need to handle sequential inserts
-        insert_call_count = [0]
-
-        def insert_side_effect(*args, **kwargs):
-            result = MagicMock()
-            if insert_call_count[0] == 0:
-                result.data = [user_message]
-            else:
-                result.data = [agent_response]
-            insert_call_count[0] += 1
-            return result
-
-        mock_db.table.return_value.insert.return_value.execute.side_effect = (
-            insert_side_effect
-        )
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = [sample_agent]
+        mock_db._tables_data["positions"] = []
+        mock_db._tables_data["agent_activity"] = []
+        mock_db._tables_data["chat_messages"] = [user_message, agent_response]
+        mock_db._insert_data["chat_messages"] = [user_message]
 
         send_response = client.post(
             f"/api/chat/agents/{sample_agent['id']}",
@@ -229,28 +198,15 @@ class TestMarketDataFlow:
         self, client, mock_db, sample_stocks, sample_user, auth_headers
     ):
         """Test listing stocks and running screens."""
-        # Setup mocks
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["stocks"] = sample_stocks
 
         # 1. List stocks
-        mock_result = MagicMock()
-        mock_result.data = sample_stocks
-        mock_result.count = len(sample_stocks)
-        mock_db.table.return_value.select.return_value.order.return_value.range.return_value.execute.return_value = (
-            mock_result
-        )
-
         list_response = client.get("/api/market/stocks", headers=auth_headers)
         assert list_response.status_code == 200
         assert "data" in list_response.json()
 
         # 2. Screen stocks
-        mock_db.table.return_value.select.return_value.gte.return_value.order.return_value.limit.return_value.execute.return_value.data = sample_stocks[
-            :3
-        ]
-
         screen_response = client.post(
             "/api/market/screen",
             headers=auth_headers,
@@ -271,18 +227,9 @@ class TestReportFlow:
         self, client, mock_db, sample_agents, sample_user, auth_headers
     ):
         """Test getting team summary."""
-        # Setup mocks
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-            sample_user
-        ]
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
-            sample_agents
-        )
-
-        # Mock activity
-        mock_db.table.return_value.select.return_value.in_.return_value.order.return_value.limit.return_value.execute.return_value.data = (
-            []
-        )
+        mock_db._tables_data["users"] = [sample_user]
+        mock_db._tables_data["agents"] = sample_agents
+        mock_db._tables_data["agent_activity"] = []
 
         response = client.get("/api/reports/team-summary", headers=auth_headers)
         assert response.status_code == 200
