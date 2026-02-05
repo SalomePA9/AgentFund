@@ -658,6 +658,64 @@ class ZScoreSignal(SignalGenerator):
 
 
 # =============================================================================
+# Dividend Signals
+# =============================================================================
+
+class DividendYieldSignal(SignalGenerator):
+    """
+    Dividend yield signal.
+    Ranks stocks by dividend yield for income strategies.
+    """
+
+    def __init__(self, min_yield: float = 0.0):
+        self.min_yield = min_yield
+
+    @property
+    def signal_type(self) -> SignalType:
+        return SignalType.VALUE  # Use VALUE type for now, could add DIVIDEND
+
+    async def generate(
+        self,
+        symbols: list[str],
+        market_data: dict[str, Any],
+        **kwargs
+    ) -> list[Signal]:
+        yields = {}
+
+        for symbol in symbols:
+            data = market_data.get(symbol, {})
+            div_yield = data.get("dividend_yield")
+
+            if div_yield is not None and div_yield >= self.min_yield:
+                yields[symbol] = div_yield
+
+        if not yields:
+            return []
+
+        # Rank by dividend yield (higher = better)
+        yield_values = list(yields.values())
+
+        signals = []
+        for symbol, div_yield in yields.items():
+            yield_score = self.percentile_rank(div_yield, yield_values)
+            # Convert to -100 to 100 (higher yield = higher signal)
+            signal_value = (yield_score - 50) * 2
+
+            signals.append(Signal(
+                symbol=symbol,
+                signal_type=self.signal_type,
+                value=signal_value,
+                raw_value=div_yield,
+                metadata={
+                    "dividend_yield": div_yield,
+                    "yield_percentile": yield_score,
+                }
+            ))
+
+        return signals
+
+
+# =============================================================================
 # Signal Combiner
 # =============================================================================
 
@@ -725,6 +783,8 @@ __all__ = [
     "ValueSignal",
     # Quality
     "QualitySignal",
+    # Dividend
+    "DividendYieldSignal",
     # Sentiment
     "NewsSentimentSignal",
     "SocialSentimentSignal",

@@ -78,6 +78,7 @@ from core.strategies.signals import (
     CrossSectionalMomentumSignal,
     ValueSignal,
     QualitySignal,
+    DividendYieldSignal,
     NewsSentimentSignal,
     SocialSentimentSignal,
     SentimentVelocitySignal,
@@ -94,6 +95,24 @@ from core.strategies.implementations import (
     ShortTermReversalStrategy,
     StatisticalArbitrageStrategy,
     VolatilityPremiumStrategy,
+)
+
+# Strategy presets (pre-configured strategies)
+from core.strategies.presets import (
+    # Original 4 strategies
+    momentum_strategy,
+    quality_value_strategy,
+    quality_momentum_strategy,
+    dividend_growth_strategy,
+    # Advanced 5 strategies
+    trend_following_strategy,
+    short_term_reversal_strategy,
+    statistical_arbitrage_strategy,
+    volatility_premium_strategy,
+    # Registry
+    STRATEGY_PRESETS,
+    get_preset,
+    list_presets,
 )
 
 
@@ -120,6 +139,7 @@ __all__ = [
     "CrossSectionalMomentumSignal",
     "ValueSignal",
     "QualitySignal",
+    "DividendYieldSignal",
     "NewsSentimentSignal",
     "SocialSentimentSignal",
     "SentimentVelocitySignal",
@@ -133,4 +153,16 @@ __all__ = [
     "ShortTermReversalStrategy",
     "StatisticalArbitrageStrategy",
     "VolatilityPremiumStrategy",
+    # Strategy presets
+    "momentum_strategy",
+    "quality_value_strategy",
+    "quality_momentum_strategy",
+    "dividend_growth_strategy",
+    "trend_following_strategy",
+    "short_term_reversal_strategy",
+    "statistical_arbitrage_strategy",
+    "volatility_premium_strategy",
+    "STRATEGY_PRESETS",
+    "get_preset",
+    "list_presets",
 ]
