@@ -170,8 +170,13 @@ async def create_agent(
     db: Annotated[Client, Depends(get_db)],
 ):
     """Create a new trading agent."""
-    # Validate strategy type
-    valid_strategies = ["momentum", "quality_value", "quality_momentum", "dividend_growth"]
+    # Validate strategy type (original 4 + advanced 5)
+    valid_strategies = [
+        # Original strategies
+        "momentum", "quality_value", "quality_momentum", "dividend_growth",
+        # Advanced strategies
+        "trend_following", "short_term_reversal", "statistical_arbitrage", "volatility_premium",
+    ]
     if agent.strategy_type not in valid_strategies:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
