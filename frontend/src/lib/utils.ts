@@ -24,9 +24,12 @@ export function formatCurrency(
   }
 
   const { decimals = 2, showSign = false } = options || {};
+  const isNegative = value < 0;
+  const absValue = Math.abs(value);
   const sign = showSign && value > 0 ? '+' : '';
+  const negSign = isNegative ? '-' : '';
 
-  return `${sign}$${value.toLocaleString('en-US', {
+  return `${negSign}${sign}$${absValue.toLocaleString('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   })}`;
