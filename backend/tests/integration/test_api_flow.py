@@ -154,7 +154,7 @@ class TestChatFlow:
         self, client, mock_db, sample_agent, sample_user, auth_headers
     ):
         """Test sending messages and getting chat history."""
-        # Setup mocks
+        # Setup mocks - chat API uses agent_chats table
         user_message = {
             "id": str(uuid4()),
             "agent_id": sample_agent["id"],
@@ -168,7 +168,11 @@ class TestChatFlow:
             "agent_id": sample_agent["id"],
             "role": "agent",
             "message": "Your portfolio is performing well...",
-            "context_used": {},
+            "context_used": {
+                "agent_name": sample_agent["name"],
+                "persona": sample_agent["persona"],
+                "strategy_type": sample_agent["strategy_type"],
+            },
             "created_at": "2024-01-01T00:00:01Z",
         }
 
@@ -176,8 +180,9 @@ class TestChatFlow:
         mock_db._tables_data["agents"] = [sample_agent]
         mock_db._tables_data["positions"] = []
         mock_db._tables_data["agent_activity"] = []
-        mock_db._tables_data["chat_messages"] = [user_message, agent_response]
-        mock_db._insert_data["chat_messages"] = [user_message]
+        mock_db._tables_data["agent_chats"] = [user_message, agent_response]
+        # Insert returns different messages for first and second insert
+        mock_db._insert_data["agent_chats"] = [user_message, agent_response]
 
         send_response = client.post(
             f"/api/chat/agents/{sample_agent['id']}",

@@ -78,10 +78,13 @@ class MockTableBuilder:
     to return different data per table.
     """
 
-    def __init__(self, table_name: str, tables_data: dict, insert_data: dict):
+    def __init__(
+        self, table_name: str, tables_data: dict, insert_data: dict, insert_index: dict
+    ):
         self.table_name = table_name
         self.tables_data = tables_data
         self.insert_data = insert_data
+        self.insert_index = insert_index
         self._mock = MagicMock()
         self._operation = "select"
 
@@ -123,8 +126,15 @@ class MockTableBuilder:
     def _execute(self):
         response = MagicMock()
         # For insert operations, use insert_data if available
+        # Returns items sequentially for multiple inserts to same table
         if self._operation == "insert" and self.table_name in self.insert_data:
-            response.data = self.insert_data.get(self.table_name, [])
+            insert_list = self.insert_data.get(self.table_name, [])
+            idx = self.insert_index.get(self.table_name, 0)
+            if insert_list and idx < len(insert_list):
+                response.data = [insert_list[idx]]
+                self.insert_index[self.table_name] = idx + 1
+            else:
+                response.data = insert_list[:1] if insert_list else []
         else:
             response.data = self.tables_data.get(self.table_name, [])
         response.count = len(response.data)
@@ -139,16 +149,21 @@ def mock_supabase():
     This fixture provides a fully mocked Supabase client that can be
     configured to return specific data for each test via tables_data dict.
     Use _tables_data for select/update/delete and _insert_data for inserts.
+    For sequential inserts, items are returned one at a time from the list.
     """
     mock_client = MagicMock()
 
     # Store data per table - tests can modify this
     mock_client._tables_data = {}
     mock_client._insert_data = {}
+    mock_client._insert_index = {}  # Track insert position per table
 
     def table_factory(table_name: str):
         return MockTableBuilder(
-            table_name, mock_client._tables_data, mock_client._insert_data
+            table_name,
+            mock_client._tables_data,
+            mock_client._insert_data,
+            mock_client._insert_index,
         )
 
     mock_client.table.side_effect = table_factory
@@ -163,7 +178,12 @@ def mock_db(mock_supabase):
         with patch("database.get_db", return_value=mock_supabase):
             with patch("api.auth.get_db", return_value=mock_supabase):
                 with patch("api.agents.get_db", return_value=mock_supabase):
-                    yield mock_supabase
+                    with patch("api.chat.get_db", return_value=mock_supabase):
+                        with patch("api.market.get_db", return_value=mock_supabase):
+                            with patch(
+                                "api.reports.get_db", return_value=mock_supabase
+                            ):
+                                yield mock_supabase
 
 
 # ============================================
@@ -455,7 +475,7 @@ def sample_stocks() -> list[dict]:
 
     return [
         {
-            "ticker": ticker,
+            "symbol": symbol,
             "name": name,
             "sector": sector,
             "market_cap": market_cap,
@@ -467,7 +487,7 @@ def sample_stocks() -> list[dict]:
             "ma_200": price * 0.95,
             "updated_at": datetime.utcnow().isoformat(),
         }
-        for ticker, name, sector, market_cap, price, momentum, value, quality in stocks_data
+        for symbol, name, sector, market_cap, price, momentum, value, quality in stocks_data
     ]
 
 
