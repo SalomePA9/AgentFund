@@ -44,12 +44,7 @@ jobs:
           FULL_REFRESH: ${{ github.event.inputs.full_refresh || 'false' }}
         run: |
           cd backend
-          python -c "
-          # Market data update script
-          # Will be implemented in Week 1.2
-          print('Market data update job placeholder')
-          print(f'Full refresh: {\"$FULL_REFRESH\"}')
-          "
+          python jobs/market_data_job.py --full
 
   # ============================================
   # Update Sentiment Data

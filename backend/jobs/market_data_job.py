@@ -1,0 +1,129 @@
+"""
+Market Data Scheduled Job
+Runs daily to update stock prices, moving averages, and fundamentals.
+"""
+
+import asyncio
+import logging
+import sys
+from datetime import datetime
+
+# Add parent directory to path for imports
+sys.path.insert(0, "/home/user/AgentFund/backend")
+
+from data.market_data import (
+    get_stock_universe,
+    run_market_data_update,
+)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+
+async def run_daily_market_update():
+    """
+    Main entry point for daily market data update.
+    Designed to be run by GitHub Actions at 6 AM ET.
+    """
+    logger.info("=" * 60)
+    logger.info("MARKET DATA UPDATE JOB STARTED")
+    logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
+    logger.info("=" * 60)
+
+    try:
+        # Get stock universe
+        tickers = get_stock_universe()
+        logger.info(f"Stock universe size: {len(tickers)}")
+
+        # Run the update
+        summary = await run_market_data_update(
+            tickers=tickers,
+            batch_size=50
+        )
+
+        # Log summary
+        logger.info("=" * 60)
+        logger.info("JOB SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"Duration: {summary['duration_seconds']} seconds")
+        logger.info(f"Total tickers: {summary['total_tickers']}")
+        logger.info(f"Fetch success: {summary['fetch_success']}")
+        logger.info(f"Fetch failed: {summary['fetch_failed']}")
+        logger.info(f"Database success: {summary['db_success']}")
+        logger.info(f"Database failed: {summary['db_failed']}")
+        logger.info(f"History stored: {summary['history_stored']}")
+
+        if summary['failed_tickers']:
+            logger.warning(f"Failed tickers (first 20): {summary['failed_tickers'][:20]}")
+
+        # Calculate success rate
+        success_rate = (summary['fetch_success'] / summary['total_tickers']) * 100
+        logger.info(f"Success rate: {success_rate:.1f}%")
+
+        # Return exit code based on success rate
+        if success_rate >= 90:
+            logger.info("JOB COMPLETED SUCCESSFULLY")
+            return 0
+        elif success_rate >= 70:
+            logger.warning("JOB COMPLETED WITH WARNINGS (success rate < 90%)")
+            return 0
+        else:
+            logger.error("JOB FAILED (success rate < 70%)")
+            return 1
+
+    except Exception as e:
+        logger.exception(f"JOB FAILED WITH EXCEPTION: {str(e)}")
+        return 1
+
+
+async def run_quick_update(tickers: list[str] = None):
+    """
+    Run a quick update for specific tickers or a small sample.
+    Useful for testing or on-demand updates.
+    """
+    if tickers is None:
+        # Default to top 10 popular stocks
+        tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "BRK.B", "UNH", "JNJ"]
+
+    logger.info(f"Running quick update for {len(tickers)} tickers")
+
+    summary = await run_market_data_update(
+        tickers=tickers,
+        batch_size=10
+    )
+
+    return summary
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Market Data Job Runner")
+    parser.add_argument("--full", action="store_true", help="Run full daily update")
+    parser.add_argument("--quick", action="store_true", help="Run quick update (top 10 stocks)")
+    parser.add_argument("--tickers", nargs="+", help="Specific tickers to update")
+
+    args = parser.parse_args()
+
+    if args.full:
+        exit_code = asyncio.run(run_daily_market_update())
+        sys.exit(exit_code)
+    elif args.quick:
+        summary = asyncio.run(run_quick_update())
+        print(f"Quick update complete: {summary}")
+    elif args.tickers:
+        summary = asyncio.run(run_quick_update(tickers=args.tickers))
+        print(f"Update complete: {summary}")
+    else:
+        print("Usage:")
+        print("  python market_data_job.py --full          # Run full daily update")
+        print("  python market_data_job.py --quick         # Run quick update (top 10)")
+        print("  python market_data_job.py --tickers AAPL MSFT  # Update specific tickers")

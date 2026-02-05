@@ -36,6 +36,7 @@ python-dotenv==1.0.1
 httpx==0.26.0
 pydantic==2.6.1
 pydantic-settings==2.1.0
+tenacity==8.2.3
 
 # Task scheduling
 apscheduler==3.10.4

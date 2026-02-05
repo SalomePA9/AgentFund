@@ -24,30 +24,37 @@ router = APIRouter()
 class StockResponse(BaseModel):
     """Schema for stock data response."""
 
-    ticker: str
-    name: str | None
-    sector: str | None
-    industry: str | None
-    market_cap: int | None
-    price: float | None
-    ma_30: float | None
-    ma_100: float | None
-    ma_200: float | None
-    atr: float | None
-    momentum_score: float | None
-    value_score: float | None
-    quality_score: float | None
-    composite_score: float | None
-    pe_ratio: float | None
-    pb_ratio: float | None
-    roe: float | None
-    profit_margin: float | None
-    debt_to_equity: float | None
-    dividend_yield: float | None
-    news_sentiment: float | None
-    social_sentiment: float | None
-    combined_sentiment: float | None
-    updated_at: str | None
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    market_cap: int | None = None
+    price: float | None = None
+    change_percent: float | None = None
+    ma_30: float | None = None
+    ma_100: float | None = None
+    ma_200: float | None = None
+    atr: float | None = None
+    high_52w: float | None = None
+    low_52w: float | None = None
+    avg_volume: int | None = None
+    volume: int | None = None
+    pe_ratio: float | None = None
+    pb_ratio: float | None = None
+    eps: float | None = None
+    beta: float | None = None
+    dividend_yield: float | None = None
+    # Factor scores (populated in Phase 1.3)
+    momentum_score: float | None = None
+    value_score: float | None = None
+    quality_score: float | None = None
+    composite_score: float | None = None
+    # Sentiment scores (populated in Phase 2.1)
+    news_sentiment: float | None = None
+    social_sentiment: float | None = None
+    combined_sentiment: float | None = None
+    sentiment_velocity: float | None = None
+    updated_at: str | None = None
 
 
 class ScreenRequest(BaseModel):
@@ -66,11 +73,11 @@ class ScreenRequest(BaseModel):
 class SentimentResponse(BaseModel):
     """Schema for sentiment data response."""
 
-    ticker: str
-    news_sentiment: float | None
-    social_sentiment: float | None
-    combined_sentiment: float | None
-    sentiment_velocity: float | None
+    symbol: str
+    news_sentiment: float | None = None
+    social_sentiment: float | None = None
+    combined_sentiment: float | None = None
+    sentiment_velocity: float | None = None
     news_headlines: list[dict] | None = None
 
 
@@ -121,19 +128,19 @@ async def list_stocks(
     )
 
 
-@router.get("/stocks/{ticker}", response_model=StockResponse)
+@router.get("/stocks/{symbol}", response_model=StockResponse)
 async def get_stock(
-    ticker: str,
+    symbol: str,
     current_user: Annotated[dict, Depends(get_current_user)],
     db: Annotated[Client, Depends(get_db)],
 ):
     """Get detailed information for a specific stock."""
-    result = db.table("stocks").select("*").eq("ticker", ticker.upper()).execute()
+    result = db.table("stocks").select("*").eq("symbol", symbol.upper()).execute()
 
     if not result.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Stock {ticker} not found",
+            detail=f"Stock {symbol} not found",
         )
 
     return result.data[0]
@@ -202,29 +209,29 @@ async def screen_stocks(
     return filtered[: screen.limit]
 
 
-@router.get("/sentiment/{ticker}", response_model=SentimentResponse)
+@router.get("/sentiment/{symbol}", response_model=SentimentResponse)
 async def get_sentiment(
-    ticker: str,
+    symbol: str,
     current_user: Annotated[dict, Depends(get_current_user)],
     db: Annotated[Client, Depends(get_db)],
 ):
     """Get sentiment data for a specific stock."""
     # Get current sentiment from stocks table
     stock = db.table("stocks").select(
-        "ticker, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
-    ).eq("ticker", ticker.upper()).execute()
+        "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
+    ).eq("symbol", symbol.upper()).execute()
 
     if not stock.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Stock {ticker} not found",
+            detail=f"Stock {symbol} not found",
         )
 
     # Get recent sentiment history
     history = (
         db.table("sentiment_history")
         .select("*")
-        .eq("ticker", ticker.upper())
+        .eq("symbol", symbol.upper())
         .order("recorded_at", desc=True)
         .limit(10)
         .execute()
@@ -233,7 +240,7 @@ async def get_sentiment(
     stock_data = stock.data[0]
 
     return SentimentResponse(
-        ticker=stock_data["ticker"],
+        symbol=stock_data["symbol"],
         news_sentiment=stock_data.get("news_sentiment"),
         social_sentiment=stock_data.get("social_sentiment"),
         combined_sentiment=stock_data.get("combined_sentiment"),
