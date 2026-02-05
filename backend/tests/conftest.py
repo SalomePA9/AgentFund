@@ -352,8 +352,12 @@ def sample_positions(sample_agent) -> list[dict]:
                 "exit_price": current_price if is_closed else None,
                 "exit_date": date.today().isoformat() if is_closed else None,
                 "exit_rationale": "Target reached" if is_closed else None,
-                "realized_pnl": (current_price - entry_price) * shares if is_closed else None,
-                "realized_pnl_pct": ((current_price / entry_price) - 1) * 100 if is_closed else None,
+                "realized_pnl": (
+                    (current_price - entry_price) * shares if is_closed else None
+                ),
+                "realized_pnl_pct": (
+                    ((current_price / entry_price) - 1) * 100 if is_closed else None
+                ),
                 "created_at": datetime.utcnow().isoformat(),
                 "updated_at": datetime.utcnow().isoformat(),
             }
