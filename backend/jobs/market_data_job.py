@@ -19,6 +19,7 @@ from data.market_data import (
     run_market_data_update,
 )
 from jobs.factor_scoring_job import run_factor_scoring_job
+from jobs.sentiment_job import run_sentiment_job
 
 # Configure logging
 logging.basicConfig(
@@ -86,6 +87,25 @@ async def run_daily_market_update():
         logger.info("=" * 60)
         for key, value in factor_summary.items():
             logger.info(f"{key}: {value}")
+
+        # Run sentiment analysis job
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("STARTING SENTIMENT ANALYSIS JOB")
+        logger.info("=" * 60)
+
+        sentiment_summary = await run_sentiment_job()
+
+        logger.info("")
+        logger.info("=" * 60)
+        logger.info("SENTIMENT ANALYSIS SUMMARY")
+        logger.info("=" * 60)
+        logger.info(f"Status: {sentiment_summary.get('status')}")
+        logger.info(f"Symbols processed: {sentiment_summary.get('symbols_processed', 0)}")
+        if "coverage" in sentiment_summary:
+            logger.info(f"Coverage: {sentiment_summary['coverage']}")
+        if "averages" in sentiment_summary:
+            logger.info(f"Averages: {sentiment_summary['averages']}")
 
         # Return exit code based on success rate
         if success_rate >= 90:

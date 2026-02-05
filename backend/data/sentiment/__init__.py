@@ -8,6 +8,7 @@ Provides sentiment analysis from multiple sources:
 Exports:
 - SentimentAnalyzer: Abstract base class
 - CombinedSentimentCalculator: Combines multiple sources
+- SentimentOrchestrator: Full pipeline orchestration
 - NewsSentimentAnalyzer: News headlines via FinBERT
 - SocialSentimentAnalyzer: StockTwits + Alpha Vantage
 - Data models: SentimentResult, SentimentScore, etc.
@@ -16,6 +17,12 @@ Exports:
 from data.sentiment.base import (
     CombinedSentimentCalculator,
     SentimentAnalyzer,
+)
+from data.sentiment.combined import (
+    SentimentOrchestrator,
+    analyze_all_sentiment,
+    calculate_velocity,
+    interpret_velocity,
 )
 from data.sentiment.models import (
     NewsItem,
@@ -42,6 +49,11 @@ __all__ = [
     # Base classes
     "SentimentAnalyzer",
     "CombinedSentimentCalculator",
+    # Orchestrator
+    "SentimentOrchestrator",
+    "analyze_all_sentiment",
+    "calculate_velocity",
+    "interpret_velocity",
     # News sentiment
     "NewsSentimentAnalyzer",
     "FinBERTAnalyzer",
