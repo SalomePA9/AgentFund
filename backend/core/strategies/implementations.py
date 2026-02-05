@@ -23,13 +23,9 @@ from core.strategies.base import (
     BaseStrategy,
     Position,
     PositionSide,
-    RiskConfig,
-    RiskMode,
-    SentimentConfig,
     SentimentMode,
     Signal,
     SignalType,
-    StrategyConfig,
     StrategyRegistry,
     StrategyType,
 )
@@ -47,10 +43,10 @@ from core.strategies.signals import (
     ZScoreSignal,
 )
 
-
 # =============================================================================
 # 1. Trend Following Strategy
 # =============================================================================
+
 
 @StrategyRegistry.register(StrategyType.TREND_FOLLOWING)
 class TrendFollowingStrategy(BaseStrategy):
@@ -85,23 +81,21 @@ class TrendFollowingStrategy(BaseStrategy):
                 short_window=params.get("short_window", 20),
                 long_window=params.get("long_window", 60),
             ),
-            RealizedVolatilitySignal(
-                lookback_days=params.get("vol_lookback", 20)
-            ),
+            RealizedVolatilitySignal(lookback_days=params.get("vol_lookback", 20)),
         ]
 
         # Add sentiment generators if enabled
         if self.config.sentiment.mode != SentimentMode.DISABLED:
-            self.signal_generators.extend([
-                NewsSentimentSignal(),
-                SocialSentimentSignal(),
-                SentimentVelocitySignal(),
-            ])
+            self.signal_generators.extend(
+                [
+                    NewsSentimentSignal(),
+                    SocialSentimentSignal(),
+                    SentimentVelocitySignal(),
+                ]
+            )
 
     async def generate_signals(
-        self,
-        market_data: dict[str, Any],
-        sentiment_data: dict[str, Any] | None = None
+        self, market_data: dict[str, Any], sentiment_data: dict[str, Any] | None = None
     ) -> list[Signal]:
         all_signals = []
         symbols = self.config.universe or list(market_data.keys())
@@ -123,9 +117,7 @@ class TrendFollowingStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self,
-        signals: list[Signal],
-        current_positions: dict[str, Any] | None = None
+        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
     ) -> list[Position]:
         """
         Construct trend-following portfolio.
@@ -174,17 +166,19 @@ class TrendFollowingStrategy(BaseStrategy):
             # Cap at max position size
             weight = min(weight, self.config.risk.max_position_size)
 
-            positions.append(Position(
-                symbol=symbol,
-                side=side,
-                target_weight=weight,
-                signal_strength=abs(mom_signal.value),
-                metadata={
-                    "strategy": "trend_following",
-                    "momentum_signal": mom_signal.value,
-                    "trend_score": mom_signal.metadata.get("trend_score"),
-                }
-            ))
+            positions.append(
+                Position(
+                    symbol=symbol,
+                    side=side,
+                    target_weight=weight,
+                    signal_strength=abs(mom_signal.value),
+                    metadata={
+                        "strategy": "trend_following",
+                        "momentum_signal": mom_signal.value,
+                        "trend_score": mom_signal.metadata.get("trend_score"),
+                    },
+                )
+            )
 
         return positions
 
@@ -192,6 +186,7 @@ class TrendFollowingStrategy(BaseStrategy):
 # =============================================================================
 # 2. Cross-Sectional Factor Strategy
 # =============================================================================
+
 
 @StrategyRegistry.register(StrategyType.CROSS_SECTIONAL_FACTOR)
 class CrossSectionalFactorStrategy(BaseStrategy):
@@ -221,12 +216,15 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         params = self.config.custom_params
 
         # Factor weights
-        factors = params.get("factors", {
-            "momentum": 0.3,
-            "value": 0.3,
-            "quality": 0.3,
-            "low_vol": 0.1,
-        })
+        factors = params.get(
+            "factors",
+            {
+                "momentum": 0.3,
+                "value": 0.3,
+                "quality": 0.3,
+                "low_vol": 0.1,
+            },
+        )
 
         self.signal_generators = []
         self.factor_weights = {}
@@ -237,7 +235,9 @@ class CrossSectionalFactorStrategy(BaseStrategy):
                     lookback_days=params.get("momentum_lookback", 126)
                 )
             )
-            self.factor_weights[SignalType.CROSS_SECTIONAL_MOMENTUM] = factors["momentum"]
+            self.factor_weights[SignalType.CROSS_SECTIONAL_MOMENTUM] = factors[
+                "momentum"
+            ]
 
         if factors.get("value", 0) > 0:
             self.signal_generators.append(ValueSignal())
@@ -254,17 +254,17 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         # Add sentiment if enabled
         if self.config.sentiment.mode == SentimentMode.ALPHA:
             sentiment_weight = self.config.sentiment.sentiment_alpha_weight
-            self.signal_generators.extend([
-                NewsSentimentSignal(),
-                SocialSentimentSignal(),
-            ])
+            self.signal_generators.extend(
+                [
+                    NewsSentimentSignal(),
+                    SocialSentimentSignal(),
+                ]
+            )
             self.factor_weights[SignalType.NEWS_SENTIMENT] = sentiment_weight / 2
             self.factor_weights[SignalType.SOCIAL_SENTIMENT] = sentiment_weight / 2
 
     async def generate_signals(
-        self,
-        market_data: dict[str, Any],
-        sentiment_data: dict[str, Any] | None = None
+        self, market_data: dict[str, Any], sentiment_data: dict[str, Any] | None = None
     ) -> list[Signal]:
         all_signals = []
         symbols = self.config.universe or list(market_data.keys())
@@ -285,9 +285,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self,
-        signals: list[Signal],
-        current_positions: dict[str, Any] | None = None
+        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
     ) -> list[Position]:
         """
         Construct factor portfolio.
@@ -310,9 +308,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
 
         # Rank and select
         sorted_symbols = sorted(
-            combined_scores.keys(),
-            key=lambda s: combined_scores[s],
-            reverse=True
+            combined_scores.keys(), key=lambda s: combined_scores[s], reverse=True
         )
 
         n = len(sorted_symbols)
@@ -323,52 +319,64 @@ class CrossSectionalFactorStrategy(BaseStrategy):
 
         # Long positions (top ranked)
         long_symbols = sorted_symbols[:n_long]
-        long_weight = self.config.risk.max_position_size if not equal_weight else (
-            min(1.0 / n_long, self.config.risk.max_position_size)
+        long_weight = (
+            self.config.risk.max_position_size
+            if not equal_weight
+            else (min(1.0 / n_long, self.config.risk.max_position_size))
         )
 
         for symbol in long_symbols:
             score = combined_scores[symbol]
-            weight = long_weight if equal_weight else (
-                long_weight * (score + 100) / 200  # Scale by score
+            weight = (
+                long_weight
+                if equal_weight
+                else (long_weight * (score + 100) / 200)  # Scale by score
             )
 
-            positions.append(Position(
-                symbol=symbol,
-                side=PositionSide.LONG,
-                target_weight=weight,
-                signal_strength=score,
-                metadata={
-                    "strategy": "cross_sectional_factor",
-                    "composite_score": score,
-                    "rank": sorted_symbols.index(symbol) + 1,
-                }
-            ))
-
-        # Short positions (bottom ranked)
-        if allow_short:
-            short_symbols = sorted_symbols[-n_short:]
-            short_weight = self.config.risk.max_position_size if not equal_weight else (
-                min(1.0 / n_short, self.config.risk.max_position_size)
-            )
-
-            for symbol in short_symbols:
-                score = combined_scores[symbol]
-                weight = short_weight if equal_weight else (
-                    short_weight * (100 - score) / 200
-                )
-
-                positions.append(Position(
+            positions.append(
+                Position(
                     symbol=symbol,
-                    side=PositionSide.SHORT,
+                    side=PositionSide.LONG,
                     target_weight=weight,
-                    signal_strength=abs(score),
+                    signal_strength=score,
                     metadata={
                         "strategy": "cross_sectional_factor",
                         "composite_score": score,
                         "rank": sorted_symbols.index(symbol) + 1,
-                    }
-                ))
+                    },
+                )
+            )
+
+        # Short positions (bottom ranked)
+        if allow_short:
+            short_symbols = sorted_symbols[-n_short:]
+            short_weight = (
+                self.config.risk.max_position_size
+                if not equal_weight
+                else (min(1.0 / n_short, self.config.risk.max_position_size))
+            )
+
+            for symbol in short_symbols:
+                score = combined_scores[symbol]
+                weight = (
+                    short_weight
+                    if equal_weight
+                    else (short_weight * (100 - score) / 200)
+                )
+
+                positions.append(
+                    Position(
+                        symbol=symbol,
+                        side=PositionSide.SHORT,
+                        target_weight=weight,
+                        signal_strength=abs(score),
+                        metadata={
+                            "strategy": "cross_sectional_factor",
+                            "composite_score": score,
+                            "rank": sorted_symbols.index(symbol) + 1,
+                        },
+                    )
+                )
 
         return positions
 
@@ -376,6 +384,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
 # =============================================================================
 # 3. Short-Term Reversal Strategy
 # =============================================================================
+
 
 @StrategyRegistry.register(StrategyType.SHORT_TERM_REVERSAL)
 class ShortTermReversalStrategy(BaseStrategy):
@@ -404,21 +413,15 @@ class ShortTermReversalStrategy(BaseStrategy):
         params = self.config.custom_params
 
         self.signal_generators = [
-            ShortTermReversalSignal(
-                lookback_days=params.get("lookback_days", 5)
-            ),
-            RealizedVolatilitySignal(
-                lookback_days=params.get("vol_lookback", 20)
-            ),
+            ShortTermReversalSignal(lookback_days=params.get("lookback_days", 5)),
+            RealizedVolatilitySignal(lookback_days=params.get("vol_lookback", 20)),
         ]
 
         if self.config.sentiment.mode != SentimentMode.DISABLED:
             self.signal_generators.append(SentimentVelocitySignal())
 
     async def generate_signals(
-        self,
-        market_data: dict[str, Any],
-        sentiment_data: dict[str, Any] | None = None
+        self, market_data: dict[str, Any], sentiment_data: dict[str, Any] | None = None
     ) -> list[Signal]:
         all_signals = []
         symbols = self.config.universe or list(market_data.keys())
@@ -436,9 +439,7 @@ class ShortTermReversalStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self,
-        signals: list[Signal],
-        current_positions: dict[str, Any] | None = None
+        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
     ) -> list[Position]:
         """
         Construct reversal portfolio.
@@ -491,21 +492,23 @@ class ShortTermReversalStrategy(BaseStrategy):
             # Size based on z-score magnitude
             weight = min(
                 z_score / 5 * 0.05,  # Scale by extremity
-                self.config.risk.max_position_size
+                self.config.risk.max_position_size,
             )
 
-            positions.append(Position(
-                symbol=symbol,
-                side=side,
-                target_weight=weight,
-                signal_strength=abs(rev_signal.value),
-                max_holding_days=holding_days,
-                metadata={
-                    "strategy": "short_term_reversal",
-                    "z_score": rev_signal.metadata.get("z_score"),
-                    "short_term_return": rev_signal.raw_value,
-                }
-            ))
+            positions.append(
+                Position(
+                    symbol=symbol,
+                    side=side,
+                    target_weight=weight,
+                    signal_strength=abs(rev_signal.value),
+                    max_holding_days=holding_days,
+                    metadata={
+                        "strategy": "short_term_reversal",
+                        "z_score": rev_signal.metadata.get("z_score"),
+                        "short_term_return": rev_signal.raw_value,
+                    },
+                )
+            )
 
         # Balance for market neutrality if required
         if market_neutral:
@@ -515,8 +518,12 @@ class ShortTermReversalStrategy(BaseStrategy):
 
     def _balance_market_neutral(self, positions: list[Position]) -> list[Position]:
         """Adjust weights to achieve market neutrality."""
-        long_weight = sum(p.target_weight for p in positions if p.side == PositionSide.LONG)
-        short_weight = sum(p.target_weight for p in positions if p.side == PositionSide.SHORT)
+        long_weight = sum(
+            p.target_weight for p in positions if p.side == PositionSide.LONG
+        )
+        short_weight = sum(
+            p.target_weight for p in positions if p.side == PositionSide.SHORT
+        )
 
         if long_weight == 0 or short_weight == 0:
             return positions
@@ -526,9 +533,9 @@ class ShortTermReversalStrategy(BaseStrategy):
 
         for pos in positions:
             if pos.side == PositionSide.LONG:
-                pos.target_weight *= (target / long_weight)
+                pos.target_weight *= target / long_weight
             else:
-                pos.target_weight *= (target / short_weight)
+                pos.target_weight *= target / short_weight
 
         return positions
 
@@ -536,6 +543,7 @@ class ShortTermReversalStrategy(BaseStrategy):
 # =============================================================================
 # 4. Statistical Arbitrage Strategy
 # =============================================================================
+
 
 @StrategyRegistry.register(StrategyType.STATISTICAL_ARBITRAGE)
 class StatisticalArbitrageStrategy(BaseStrategy):
@@ -563,24 +571,20 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         params = self.config.custom_params
 
         self.signal_generators = [
-            ZScoreSignal(
-                lookback_days=params.get("zscore_lookback", 60)
-            ),
-            RealizedVolatilitySignal(
-                lookback_days=params.get("vol_lookback", 20)
-            ),
+            ZScoreSignal(lookback_days=params.get("zscore_lookback", 60)),
+            RealizedVolatilitySignal(lookback_days=params.get("vol_lookback", 20)),
         ]
 
         if self.config.sentiment.mode == SentimentMode.ALPHA:
-            self.signal_generators.extend([
-                NewsSentimentSignal(),
-                SocialSentimentSignal(),
-            ])
+            self.signal_generators.extend(
+                [
+                    NewsSentimentSignal(),
+                    SocialSentimentSignal(),
+                ]
+            )
 
     async def generate_signals(
-        self,
-        market_data: dict[str, Any],
-        sentiment_data: dict[str, Any] | None = None
+        self, market_data: dict[str, Any], sentiment_data: dict[str, Any] | None = None
     ) -> list[Signal]:
         all_signals = []
         symbols = self.config.universe or list(market_data.keys())
@@ -601,9 +605,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self,
-        signals: list[Signal],
-        current_positions: dict[str, Any] | None = None
+        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
     ) -> list[Position]:
         """
         Construct stat arb portfolio.
@@ -622,7 +624,10 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         for signal in signals:
             if signal.signal_type == SignalType.STATISTICAL_ZSCORE:
                 zscore_signals[signal.symbol] = signal
-            elif signal.signal_type in [SignalType.NEWS_SENTIMENT, SignalType.SOCIAL_SENTIMENT]:
+            elif signal.signal_type in [
+                SignalType.NEWS_SENTIMENT,
+                SignalType.SOCIAL_SENTIMENT,
+            ]:
                 if signal.symbol not in sentiment_signals:
                     sentiment_signals[signal.symbol] = signal
 
@@ -645,36 +650,44 @@ class StatisticalArbitrageStrategy(BaseStrategy):
 
                     if spread_z > 0:
                         # Spread too high: short sym1, long sym2
-                        positions.append(Position(
-                            symbol=sym1,
-                            side=PositionSide.SHORT,
-                            target_weight=weight,
-                            signal_strength=abs(spread_z) * 25,
-                            metadata={"pair": (sym1, sym2), "spread_z": spread_z}
-                        ))
-                        positions.append(Position(
-                            symbol=sym2,
-                            side=PositionSide.LONG,
-                            target_weight=weight,
-                            signal_strength=abs(spread_z) * 25,
-                            metadata={"pair": (sym1, sym2), "spread_z": spread_z}
-                        ))
+                        positions.append(
+                            Position(
+                                symbol=sym1,
+                                side=PositionSide.SHORT,
+                                target_weight=weight,
+                                signal_strength=abs(spread_z) * 25,
+                                metadata={"pair": (sym1, sym2), "spread_z": spread_z},
+                            )
+                        )
+                        positions.append(
+                            Position(
+                                symbol=sym2,
+                                side=PositionSide.LONG,
+                                target_weight=weight,
+                                signal_strength=abs(spread_z) * 25,
+                                metadata={"pair": (sym1, sym2), "spread_z": spread_z},
+                            )
+                        )
                     else:
                         # Spread too low: long sym1, short sym2
-                        positions.append(Position(
-                            symbol=sym1,
-                            side=PositionSide.LONG,
-                            target_weight=weight,
-                            signal_strength=abs(spread_z) * 25,
-                            metadata={"pair": (sym1, sym2), "spread_z": spread_z}
-                        ))
-                        positions.append(Position(
-                            symbol=sym2,
-                            side=PositionSide.SHORT,
-                            target_weight=weight,
-                            signal_strength=abs(spread_z) * 25,
-                            metadata={"pair": (sym1, sym2), "spread_z": spread_z}
-                        ))
+                        positions.append(
+                            Position(
+                                symbol=sym1,
+                                side=PositionSide.LONG,
+                                target_weight=weight,
+                                signal_strength=abs(spread_z) * 25,
+                                metadata={"pair": (sym1, sym2), "spread_z": spread_z},
+                            )
+                        )
+                        positions.append(
+                            Position(
+                                symbol=sym2,
+                                side=PositionSide.SHORT,
+                                target_weight=weight,
+                                signal_strength=abs(spread_z) * 25,
+                                metadata={"pair": (sym1, sym2), "spread_z": spread_z},
+                            )
+                        )
 
         else:
             # Individual z-score mode
@@ -686,16 +699,18 @@ class StatisticalArbitrageStrategy(BaseStrategy):
                     side = PositionSide.LONG if z < 0 else PositionSide.SHORT
                     weight = min(abs(z) / 10, self.config.risk.max_position_size)
 
-                    positions.append(Position(
-                        symbol=symbol,
-                        side=side,
-                        target_weight=weight,
-                        signal_strength=abs(z_signal.value),
-                        metadata={
-                            "strategy": "statistical_arbitrage",
-                            "z_score": z,
-                        }
-                    ))
+                    positions.append(
+                        Position(
+                            symbol=symbol,
+                            side=side,
+                            target_weight=weight,
+                            signal_strength=abs(z_signal.value),
+                            metadata={
+                                "strategy": "statistical_arbitrage",
+                                "z_score": z,
+                            },
+                        )
+                    )
 
         return positions
 
@@ -703,6 +718,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
 # =============================================================================
 # 5. Volatility Premium Strategy
 # =============================================================================
+
 
 @StrategyRegistry.register(StrategyType.VOLATILITY_PREMIUM)
 class VolatilityPremiumStrategy(BaseStrategy):
@@ -730,21 +746,19 @@ class VolatilityPremiumStrategy(BaseStrategy):
         params = self.config.custom_params
 
         self.signal_generators = [
-            RealizedVolatilitySignal(
-                lookback_days=params.get("vol_lookback", 20)
-            ),
+            RealizedVolatilitySignal(lookback_days=params.get("vol_lookback", 20)),
         ]
 
         if self.config.sentiment.mode != SentimentMode.DISABLED:
-            self.signal_generators.extend([
-                NewsSentimentSignal(),
-                SentimentVelocitySignal(),
-            ])
+            self.signal_generators.extend(
+                [
+                    NewsSentimentSignal(),
+                    SentimentVelocitySignal(),
+                ]
+            )
 
     async def generate_signals(
-        self,
-        market_data: dict[str, Any],
-        sentiment_data: dict[str, Any] | None = None
+        self, market_data: dict[str, Any], sentiment_data: dict[str, Any] | None = None
     ) -> list[Signal]:
         all_signals = []
         symbols = self.config.universe or list(market_data.keys())
@@ -765,9 +779,7 @@ class VolatilityPremiumStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self,
-        signals: list[Signal],
-        current_positions: dict[str, Any] | None = None
+        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
     ) -> list[Position]:
         """
         Construct vol premium portfolio.
@@ -806,7 +818,7 @@ class VolatilityPremiumStrategy(BaseStrategy):
         # Rank by volatility
         sorted_by_vol = sorted(
             vol_signals.items(),
-            key=lambda x: x[1].metadata.get("annualized_volatility", float("inf"))
+            key=lambda x: x[1].metadata.get("annualized_volatility", float("inf")),
         )
 
         n = len(sorted_by_vol)
@@ -821,20 +833,22 @@ class VolatilityPremiumStrategy(BaseStrategy):
             # Size inversely to volatility
             weight = min(
                 self.config.risk.target_volatility / vol * 0.1,
-                self.config.risk.max_position_size
+                self.config.risk.max_position_size,
             )
 
-            positions.append(Position(
-                symbol=symbol,
-                side=PositionSide.LONG,
-                target_weight=weight,
-                signal_strength=vol_signal.value,
-                metadata={
-                    "strategy": "volatility_premium",
-                    "annualized_volatility": vol,
-                    "vol_rank": sorted_by_vol.index((symbol, vol_signal)) + 1,
-                }
-            ))
+            positions.append(
+                Position(
+                    symbol=symbol,
+                    side=PositionSide.LONG,
+                    target_weight=weight,
+                    signal_strength=vol_signal.value,
+                    metadata={
+                        "strategy": "volatility_premium",
+                        "annualized_volatility": vol,
+                        "vol_rank": sorted_by_vol.index((symbol, vol_signal)) + 1,
+                    },
+                )
+            )
 
         # Optionally short high-vol stocks
         if not low_vol_only:
@@ -844,20 +858,22 @@ class VolatilityPremiumStrategy(BaseStrategy):
 
                 weight = min(
                     self.config.risk.target_volatility / vol * 0.05,
-                    self.config.risk.max_position_size * 0.5
+                    self.config.risk.max_position_size * 0.5,
                 )
 
-                positions.append(Position(
-                    symbol=symbol,
-                    side=PositionSide.SHORT,
-                    target_weight=weight,
-                    signal_strength=abs(vol_signal.value),
-                    metadata={
-                        "strategy": "volatility_premium",
-                        "annualized_volatility": vol,
-                        "vol_rank": sorted_by_vol.index((symbol, vol_signal)) + 1,
-                    }
-                ))
+                positions.append(
+                    Position(
+                        symbol=symbol,
+                        side=PositionSide.SHORT,
+                        target_weight=weight,
+                        signal_strength=abs(vol_signal.value),
+                        metadata={
+                            "strategy": "volatility_premium",
+                            "annualized_volatility": vol,
+                            "vol_rank": sorted_by_vol.index((symbol, vol_signal)) + 1,
+                        },
+                    )
+                )
 
         return positions
 

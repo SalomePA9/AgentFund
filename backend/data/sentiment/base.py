@@ -96,7 +96,9 @@ class SentimentAnalyzer(ABC):
         """
         pass
 
-    async def analyze_symbol(self, symbol: str, use_cache: bool = True) -> SentimentResult:
+    async def analyze_symbol(
+        self, symbol: str, use_cache: bool = True
+    ) -> SentimentResult:
         """
         Analyze sentiment for a single symbol.
 
@@ -112,8 +114,12 @@ class SentimentAnalyzer(ABC):
         # Check cache
         if use_cache and symbol in self._cache:
             cached_result, cached_time = self._cache[symbol]
-            if datetime.utcnow() - cached_time < timedelta(minutes=self.cache_ttl_minutes):
-                logger.debug(f"Cache hit for {symbol} sentiment from {self.source.value}")
+            if datetime.utcnow() - cached_time < timedelta(
+                minutes=self.cache_ttl_minutes
+            ):
+                logger.debug(
+                    f"Cache hit for {symbol} sentiment from {self.source.value}"
+                )
                 return cached_result
 
         try:
@@ -175,7 +181,9 @@ class SentimentAnalyzer(ABC):
             return result
 
         except Exception as e:
-            logger.error(f"Error analyzing {symbol} sentiment from {self.source.value}: {e}")
+            logger.error(
+                f"Error analyzing {symbol} sentiment from {self.source.value}: {e}"
+            )
             return SentimentResult(
                 symbol=symbol,
                 source=self.source,
@@ -325,17 +333,25 @@ class CombinedSentimentCalculator:
             SentimentScore with combined metrics
         """
         symbol = (
-            news_result.symbol if news_result else
-            social_result.symbol if social_result else
-            "UNKNOWN"
+            news_result.symbol
+            if news_result
+            else social_result.symbol if social_result else "UNKNOWN"
         )
 
         # Extract individual sentiments
-        news_sentiment = news_result.score if news_result and news_result.confidence > 0 else None
-        social_sentiment = social_result.score if social_result and social_result.confidence > 0 else None
+        news_sentiment = (
+            news_result.score if news_result and news_result.confidence > 0 else None
+        )
+        social_sentiment = (
+            social_result.score
+            if social_result and social_result.confidence > 0
+            else None
+        )
 
         # Calculate velocity from historical data
-        velocity = self._calculate_velocity(historical_scores) if historical_scores else None
+        velocity = (
+            self._calculate_velocity(historical_scores) if historical_scores else None
+        )
 
         # Calculate combined sentiment
         combined = self._weighted_combine(news_sentiment, social_sentiment, velocity)
@@ -435,7 +451,9 @@ class CombinedSentimentCalculator:
         if days_elapsed == 0:
             days_elapsed = 1
 
-        velocity = (newest.combined_sentiment - oldest.combined_sentiment) / days_elapsed
+        velocity = (
+            newest.combined_sentiment - oldest.combined_sentiment
+        ) / days_elapsed
         return velocity
 
     def create_history_record(

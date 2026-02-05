@@ -1,6 +1,7 @@
 """Daily report domain model."""
 
 from datetime import date, datetime
+
 from pydantic import BaseModel
 
 
@@ -65,7 +66,11 @@ class DailyReport(BaseModel):
     @property
     def sell_count(self) -> int:
         """Count sell actions."""
-        return sum(1 for a in self.actions_taken if a.type in ["sell", "stop_hit", "target_hit"])
+        return sum(
+            1
+            for a in self.actions_taken
+            if a.type in ["sell", "stop_hit", "target_hit"]
+        )
 
     class Config:
         from_attributes = True

@@ -159,7 +159,7 @@ class FinBERTAnalyzer:
 
         try:
             # FinBERT returns: {'label': 'positive/negative/neutral', 'score': 0.0-1.0}
-            result = self._pipeline(text[:self._max_length])[0]
+            result = self._pipeline(text[: self._max_length])[0]
 
             label = result["label"].lower()
             confidence = result["score"]
@@ -198,8 +198,7 @@ class FinBERTAnalyzer:
         try:
             # Filter and truncate texts
             valid_texts = [
-                t[:self._max_length] for t in texts
-                if t and len(t.strip()) >= 5
+                t[: self._max_length] for t in texts if t and len(t.strip()) >= 5
             ]
 
             if not valid_texts:
@@ -295,7 +294,6 @@ class NewsSentimentAnalyzer(SentimentAnalyzer):
         """Parse RSS date string to datetime."""
         try:
             # feedparser normalizes dates to struct_time
-            import time
             if hasattr(date_str, "tm_year"):
                 return datetime(*date_str[:6])
             # Try parsing common formats
@@ -352,7 +350,9 @@ class NewsSentimentAnalyzer(SentimentAnalyzer):
             cutoff_date = datetime.utcnow() - timedelta(days=self.lookback_days)
             news_items = []
 
-            for entry in feed.entries[: self.max_headlines * 2]:  # Fetch extra for filtering
+            for entry in feed.entries[
+                : self.max_headlines * 2
+            ]:  # Fetch extra for filtering
                 # Parse publication date
                 pub_date = None
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
@@ -462,7 +462,9 @@ class NewsSentimentAnalyzer(SentimentAnalyzer):
 
         return min(1.0, size_confidence + consistency_bonus)
 
-    async def analyze_symbol(self, symbol: str, use_cache: bool = True) -> SentimentResult:
+    async def analyze_symbol(
+        self, symbol: str, use_cache: bool = True
+    ) -> SentimentResult:
         """
         Override to use batch FinBERT analysis for efficiency.
         """
@@ -471,7 +473,9 @@ class NewsSentimentAnalyzer(SentimentAnalyzer):
         # Check cache first
         if use_cache and symbol in self._cache:
             cached_result, cached_time = self._cache[symbol]
-            if datetime.utcnow() - cached_time < timedelta(minutes=self.cache_ttl_minutes):
+            if datetime.utcnow() - cached_time < timedelta(
+                minutes=self.cache_ttl_minutes
+            ):
                 logger.debug(f"Cache hit for {symbol} news sentiment")
                 return cached_result
 

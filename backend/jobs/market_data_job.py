@@ -14,12 +14,12 @@ _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from data.market_data import (
+from data.market_data import (  # noqa: E402
     get_stock_universe,
     run_market_data_update,
 )
-from jobs.factor_scoring_job import run_factor_scoring_job
-from jobs.sentiment_job import run_sentiment_job
+from jobs.factor_scoring_job import run_factor_scoring_job  # noqa: E402
+from jobs.sentiment_job import run_sentiment_job  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -27,7 +27,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-    ]
+    ],
 )
 
 logger = logging.getLogger(__name__)
@@ -49,10 +49,7 @@ async def run_daily_market_update():
         logger.info(f"Stock universe size: {len(tickers)}")
 
         # Run the update
-        summary = await run_market_data_update(
-            tickers=tickers,
-            batch_size=50
-        )
+        summary = await run_market_data_update(tickers=tickers, batch_size=50)
 
         # Log summary
         logger.info("=" * 60)
@@ -66,11 +63,13 @@ async def run_daily_market_update():
         logger.info(f"Database failed: {summary['db_failed']}")
         logger.info(f"History stored: {summary['history_stored']}")
 
-        if summary['failed_tickers']:
-            logger.warning(f"Failed tickers (first 20): {summary['failed_tickers'][:20]}")
+        if summary["failed_tickers"]:
+            logger.warning(
+                f"Failed tickers (first 20): {summary['failed_tickers'][:20]}"
+            )
 
         # Calculate success rate
-        success_rate = (summary['fetch_success'] / summary['total_tickers']) * 100
+        success_rate = (summary["fetch_success"] / summary["total_tickers"]) * 100
         logger.info(f"Success rate: {success_rate:.1f}%")
 
         # Run factor scoring job after market data update
@@ -101,7 +100,9 @@ async def run_daily_market_update():
         logger.info("SENTIMENT ANALYSIS SUMMARY")
         logger.info("=" * 60)
         logger.info(f"Status: {sentiment_summary.get('status')}")
-        logger.info(f"Symbols processed: {sentiment_summary.get('symbols_processed', 0)}")
+        logger.info(
+            f"Symbols processed: {sentiment_summary.get('symbols_processed', 0)}"
+        )
         if "coverage" in sentiment_summary:
             logger.info(f"Coverage: {sentiment_summary['coverage']}")
         if "averages" in sentiment_summary:
@@ -130,14 +131,22 @@ async def run_quick_update(tickers: list[str] = None):
     """
     if tickers is None:
         # Default to top 10 popular stocks
-        tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "BRK.B", "UNH", "JNJ"]
+        tickers = [
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "AMZN",
+            "META",
+            "NVDA",
+            "TSLA",
+            "BRK.B",
+            "UNH",
+            "JNJ",
+        ]
 
     logger.info(f"Running quick update for {len(tickers)} tickers")
 
-    summary = await run_market_data_update(
-        tickers=tickers,
-        batch_size=10
-    )
+    summary = await run_market_data_update(tickers=tickers, batch_size=10)
 
     return summary
 
@@ -147,7 +156,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Market Data Job Runner")
     parser.add_argument("--full", action="store_true", help="Run full daily update")
-    parser.add_argument("--quick", action="store_true", help="Run quick update (top 10 stocks)")
+    parser.add_argument(
+        "--quick", action="store_true", help="Run quick update (top 10 stocks)"
+    )
     parser.add_argument("--tickers", nargs="+", help="Specific tickers to update")
 
     args = parser.parse_args()
@@ -165,4 +176,6 @@ if __name__ == "__main__":
         print("Usage:")
         print("  python market_data_job.py --full          # Run full daily update")
         print("  python market_data_job.py --quick         # Run quick update (top 10)")
-        print("  python market_data_job.py --tickers AAPL MSFT  # Update specific tickers")
+        print(
+            "  python market_data_job.py --tickers AAPL MSFT  # Update specific tickers"
+        )

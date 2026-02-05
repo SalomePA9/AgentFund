@@ -8,9 +8,8 @@ for all backend tests including unit, integration, and API tests.
 import asyncio
 import os
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import AsyncGenerator, Generator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -49,6 +48,7 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 def app() -> FastAPI:
     """Create a test FastAPI application instance."""
     from main import create_app
+
     return create_app()
 
 
@@ -161,6 +161,7 @@ def sample_user_with_broker(sample_user) -> dict:
 def auth_token(sample_user) -> str:
     """Create a valid JWT token for testing."""
     from api.auth import create_access_token
+
     return create_access_token(data={"sub": sample_user["id"]})
 
 
@@ -230,26 +231,28 @@ def sample_agents(sample_user) -> list[dict]:
         start_date = date.today()
         end_date = start_date + timedelta(days=180 + i * 30)
 
-        agents.append({
-            "id": str(uuid4()),
-            "user_id": sample_user["id"],
-            "name": f"Test {strategy.replace('_', ' ').title()} Agent",
-            "persona": ["analytical", "aggressive", "conservative", "teacher"][i],
-            "status": "active" if i < 3 else "paused",
-            "strategy_type": strategy,
-            "strategy_params": {"max_positions": 10},
-            "risk_params": {"stop_loss_percentage": 0.10},
-            "allocated_capital": 25000.00,
-            "cash_balance": 5000.00 + i * 1000,
-            "time_horizon_days": 180 + i * 30,
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "total_value": 25000.00 + i * 500,
-            "total_return_pct": 2.0 + i * 1.5,
-            "daily_return_pct": 0.1 * (i + 1),
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-        })
+        agents.append(
+            {
+                "id": str(uuid4()),
+                "user_id": sample_user["id"],
+                "name": f"Test {strategy.replace('_', ' ').title()} Agent",
+                "persona": ["analytical", "aggressive", "conservative", "teacher"][i],
+                "status": "active" if i < 3 else "paused",
+                "strategy_type": strategy,
+                "strategy_params": {"max_positions": 10},
+                "risk_params": {"stop_loss_percentage": 0.10},
+                "allocated_capital": 25000.00,
+                "cash_balance": 5000.00 + i * 1000,
+                "time_horizon_days": 180 + i * 30,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "total_value": 25000.00 + i * 500,
+                "total_return_pct": 2.0 + i * 1.5,
+                "daily_return_pct": 0.1 * (i + 1),
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        )
 
     return agents
 
@@ -300,24 +303,26 @@ def sample_positions(sample_agent) -> list[dict]:
         current_price = entry_price * (1 + (i - 2) * 0.05)
         shares = 10 - i
 
-        positions.append({
-            "id": str(uuid4()),
-            "agent_id": sample_agent["id"],
-            "ticker": ticker,
-            "entry_price": entry_price,
-            "entry_date": (date.today() - timedelta(days=30 - i * 5)).isoformat(),
-            "shares": shares,
-            "entry_rationale": f"Entry rationale for {ticker}",
-            "target_price": entry_price * 1.15,
-            "stop_loss_price": entry_price * 0.90,
-            "current_price": current_price,
-            "current_value": current_price * shares,
-            "unrealized_pnl": (current_price - entry_price) * shares,
-            "unrealized_pnl_pct": ((current_price / entry_price) - 1) * 100,
-            "status": "open" if i < 4 else "closed_target",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-        })
+        positions.append(
+            {
+                "id": str(uuid4()),
+                "agent_id": sample_agent["id"],
+                "ticker": ticker,
+                "entry_price": entry_price,
+                "entry_date": (date.today() - timedelta(days=30 - i * 5)).isoformat(),
+                "shares": shares,
+                "entry_rationale": f"Entry rationale for {ticker}",
+                "target_price": entry_price * 1.15,
+                "stop_loss_price": entry_price * 0.90,
+                "current_price": current_price,
+                "current_value": current_price * shares,
+                "unrealized_pnl": (current_price - entry_price) * shares,
+                "unrealized_pnl_pct": ((current_price / entry_price) - 1) * 100,
+                "status": "open" if i < 4 else "closed_target",
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+        )
 
     return positions
 
@@ -364,8 +369,26 @@ def sample_stocks() -> list[dict]:
     stocks_data = [
         ("AAPL", "Apple Inc.", "Technology", 2800000000000, 185.50, 78.5, 45.2, 88.3),
         ("NVDA", "NVIDIA Corp", "Technology", 1200000000000, 875.00, 92.1, 32.1, 75.8),
-        ("MSFT", "Microsoft Corp", "Technology", 2900000000000, 405.00, 72.3, 48.9, 91.2),
-        ("GOOGL", "Alphabet Inc", "Technology", 1700000000000, 142.50, 65.8, 55.3, 85.4),
+        (
+            "MSFT",
+            "Microsoft Corp",
+            "Technology",
+            2900000000000,
+            405.00,
+            72.3,
+            48.9,
+            91.2,
+        ),
+        (
+            "GOOGL",
+            "Alphabet Inc",
+            "Technology",
+            1700000000000,
+            142.50,
+            65.8,
+            55.3,
+            85.4,
+        ),
         ("JPM", "JPMorgan Chase", "Financial", 450000000000, 185.00, 58.2, 72.1, 78.9),
     ]
 
@@ -493,8 +516,18 @@ def sample_report(sample_agent) -> dict:
             "max_drawdown": 3.0,
         },
         "positions_snapshot": [
-            {"ticker": "AAPL", "entry_price": 180.00, "current_price": 185.50, "return_pct": 3.05},
-            {"ticker": "NVDA", "entry_price": 850.00, "current_price": 875.00, "return_pct": 2.94},
+            {
+                "ticker": "AAPL",
+                "entry_price": 180.00,
+                "current_price": 185.50,
+                "return_pct": 3.05,
+            },
+            {
+                "ticker": "NVDA",
+                "entry_price": 850.00,
+                "current_price": 875.00,
+                "return_pct": 2.94,
+            },
         ],
         "actions_taken": [
             {"type": "buy", "ticker": "MSFT", "price": 405.00, "shares": 5},
@@ -578,6 +611,8 @@ def configure_mock_table(mock_client, table_name: str, data: list):
 @pytest.fixture
 def configure_mock_db(mock_supabase):
     """Factory fixture to configure mock database responses."""
+
     def _configure(table_name: str, data: list):
         return configure_mock_table(mock_supabase, table_name, data)
+
     return _configure

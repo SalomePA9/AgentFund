@@ -6,11 +6,14 @@ Handles all interactions with Alpaca's trading API for paper and live trading.
 
 import logging
 from datetime import datetime, timedelta
-from decimal import Decimal
 from enum import Enum
 from typing import Any
 
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
+from alpaca.data.timeframe import TimeFrame
 from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderSide, QueryOrderStatus, TimeInForce
 from alpaca.trading.requests import (
     GetOrdersRequest,
     LimitOrderRequest,
@@ -19,22 +22,13 @@ from alpaca.trading.requests import (
     StopOrderRequest,
     TrailingStopOrderRequest,
 )
-from alpaca.trading.enums import (
-    OrderSide,
-    OrderStatus,
-    OrderType,
-    QueryOrderStatus,
-    TimeInForce,
-)
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
-from alpaca.data.timeframe import TimeFrame
 
 logger = logging.getLogger(__name__)
 
 
 class BrokerMode(str, Enum):
     """Trading mode for the broker."""
+
     PAPER = "paper"
     LIVE = "live"
 
@@ -56,10 +50,7 @@ class AlpacaBroker:
     LIVE_URL = "https://api.alpaca.markets"
 
     def __init__(
-        self,
-        api_key: str,
-        api_secret: str,
-        mode: BrokerMode = BrokerMode.PAPER
+        self, api_key: str, api_secret: str, mode: BrokerMode = BrokerMode.PAPER
     ):
         """
         Initialize Alpaca broker client.
@@ -78,15 +69,12 @@ class AlpacaBroker:
 
         # Initialize trading client
         self.trading_client = TradingClient(
-            api_key=api_key,
-            secret_key=api_secret,
-            paper=paper
+            api_key=api_key, secret_key=api_secret, paper=paper
         )
 
         # Initialize data client (same credentials work for both)
         self.data_client = StockHistoricalDataClient(
-            api_key=api_key,
-            secret_key=api_secret
+            api_key=api_key, secret_key=api_secret
         )
 
         logger.info(f"Alpaca broker initialized in {mode.value} mode")
@@ -125,7 +113,9 @@ class AlpacaBroker:
                 "account_blocked": account.account_blocked,
                 "trade_suspended_by_user": account.trade_suspended_by_user,
                 "multiplier": account.multiplier,
-                "created_at": account.created_at.isoformat() if account.created_at else None,
+                "created_at": (
+                    account.created_at.isoformat() if account.created_at else None
+                ),
             }
         except Exception as e:
             logger.error(f"Error getting account: {str(e)}")
@@ -161,7 +151,7 @@ class AlpacaBroker:
         qty: float,
         side: str,
         time_in_force: str = "day",
-        client_order_id: str | None = None
+        client_order_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Place a market order.
@@ -199,7 +189,7 @@ class AlpacaBroker:
         side: str,
         limit_price: float,
         time_in_force: str = "day",
-        client_order_id: str | None = None
+        client_order_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Place a limit order.
@@ -239,7 +229,7 @@ class AlpacaBroker:
         side: str,
         stop_price: float,
         time_in_force: str = "day",
-        client_order_id: str | None = None
+        client_order_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Place a stop order.
@@ -280,7 +270,7 @@ class AlpacaBroker:
         stop_price: float,
         limit_price: float,
         time_in_force: str = "day",
-        client_order_id: str | None = None
+        client_order_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Place a stop-limit order.
@@ -323,7 +313,7 @@ class AlpacaBroker:
         trail_percent: float | None = None,
         trail_price: float | None = None,
         time_in_force: str = "day",
-        client_order_id: str | None = None
+        client_order_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Place a trailing stop order.
@@ -376,10 +366,7 @@ class AlpacaBroker:
             raise
 
     def get_orders(
-        self,
-        status: str = "all",
-        limit: int = 100,
-        symbols: list[str] | None = None
+        self, status: str = "all", limit: int = 100, symbols: list[str] | None = None
     ) -> list[dict[str, Any]]:
         """
         Get list of orders.
@@ -498,8 +485,7 @@ class AlpacaBroker:
         try:
             if qty:
                 order = self.trading_client.close_position(
-                    symbol.upper(),
-                    close_options={"qty": str(qty)}
+                    symbol.upper(), close_options={"qty": str(qty)}
                 )
             else:
                 order = self.trading_client.close_position(symbol.upper())
@@ -560,7 +546,7 @@ class AlpacaBroker:
         timeframe: str = "1Day",
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = 100
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         """
         Get historical bars for a symbol.
@@ -646,18 +632,26 @@ class AlpacaBroker:
             "type": order.type.value,
             "qty": float(order.qty) if order.qty else None,
             "filled_qty": float(order.filled_qty) if order.filled_qty else 0,
-            "filled_avg_price": float(order.filled_avg_price) if order.filled_avg_price else None,
+            "filled_avg_price": (
+                float(order.filled_avg_price) if order.filled_avg_price else None
+            ),
             "limit_price": float(order.limit_price) if order.limit_price else None,
             "stop_price": float(order.stop_price) if order.stop_price else None,
-            "trail_percent": float(order.trail_percent) if order.trail_percent else None,
+            "trail_percent": (
+                float(order.trail_percent) if order.trail_percent else None
+            ),
             "trail_price": float(order.trail_price) if order.trail_price else None,
             "status": order.status.value,
             "time_in_force": order.time_in_force.value,
             "created_at": order.created_at.isoformat() if order.created_at else None,
             "updated_at": order.updated_at.isoformat() if order.updated_at else None,
-            "submitted_at": order.submitted_at.isoformat() if order.submitted_at else None,
+            "submitted_at": (
+                order.submitted_at.isoformat() if order.submitted_at else None
+            ),
             "filled_at": order.filled_at.isoformat() if order.filled_at else None,
-            "cancelled_at": order.cancelled_at.isoformat() if order.cancelled_at else None,
+            "cancelled_at": (
+                order.cancelled_at.isoformat() if order.cancelled_at else None
+            ),
             "expired_at": order.expired_at.isoformat() if order.expired_at else None,
         }
 
@@ -680,11 +674,7 @@ class AlpacaBroker:
         }
 
 
-def create_broker(
-    api_key: str,
-    api_secret: str,
-    paper: bool = True
-) -> AlpacaBroker:
+def create_broker(api_key: str, api_secret: str, paper: bool = True) -> AlpacaBroker:
     """
     Factory function to create an Alpaca broker instance.
 

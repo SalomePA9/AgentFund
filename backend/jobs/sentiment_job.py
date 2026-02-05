@@ -16,8 +16,8 @@ _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from data.sentiment.combined import SentimentOrchestrator
-from database import get_supabase_client
+from data.sentiment.combined import SentimentOrchestrator  # noqa: E402
+from database import get_supabase_client  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -94,21 +94,43 @@ async def run_sentiment_job(
             # Calculate statistics
             total = len(results)
             with_news = sum(1 for r in results.values() if r.news_sentiment is not None)
-            with_social = sum(1 for r in results.values() if r.social_sentiment is not None)
-            with_combined = sum(1 for r in results.values() if r.combined_sentiment is not None)
+            with_social = sum(
+                1 for r in results.values() if r.social_sentiment is not None
+            )
+            with_combined = sum(
+                1 for r in results.values() if r.combined_sentiment is not None
+            )
             with_velocity = sum(1 for r in results.values() if r.velocity is not None)
 
             # Calculate average sentiments
-            news_scores = [r.news_sentiment for r in results.values() if r.news_sentiment is not None]
-            social_scores = [r.social_sentiment for r in results.values() if r.social_sentiment is not None]
-            combined_scores = [r.combined_sentiment for r in results.values() if r.combined_sentiment is not None]
+            news_scores = [
+                r.news_sentiment
+                for r in results.values()
+                if r.news_sentiment is not None
+            ]
+            social_scores = [
+                r.social_sentiment
+                for r in results.values()
+                if r.social_sentiment is not None
+            ]
+            combined_scores = [
+                r.combined_sentiment
+                for r in results.values()
+                if r.combined_sentiment is not None
+            ]
 
             avg_news = sum(news_scores) / len(news_scores) if news_scores else 0
             avg_social = sum(social_scores) / len(social_scores) if social_scores else 0
-            avg_combined = sum(combined_scores) / len(combined_scores) if combined_scores else 0
+            avg_combined = (
+                sum(combined_scores) / len(combined_scores) if combined_scores else 0
+            )
 
-            logger.info(f"Coverage: news={with_news}, social={with_social}, combined={with_combined}")
-            logger.info(f"Averages: news={avg_news:.1f}, social={avg_social:.1f}, combined={avg_combined:.1f}")
+            logger.info(
+                f"Coverage: news={with_news}, social={with_social}, combined={with_combined}"
+            )
+            logger.info(
+                f"Averages: news={avg_news:.1f}, social={avg_social:.1f}, combined={avg_combined:.1f}"
+            )
 
             # Save to database
             db_success = 0
@@ -182,7 +204,18 @@ async def run_quick_sentiment(
     """
     if symbols is None:
         # Default to top 10 popular stocks
-        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "JPM", "V", "UNH"]
+        symbols = [
+            "AAPL",
+            "MSFT",
+            "GOOGL",
+            "AMZN",
+            "META",
+            "NVDA",
+            "TSLA",
+            "JPM",
+            "V",
+            "UNH",
+        ]
 
     logger.info(f"Running quick sentiment analysis for {len(symbols)} symbols")
 
@@ -199,9 +232,17 @@ async def run_quick_sentiment(
         formatted = {}
         for symbol, score in results.items():
             formatted[symbol] = {
-                "news": round(score.news_sentiment, 1) if score.news_sentiment else None,
-                "social": round(score.social_sentiment, 1) if score.social_sentiment else None,
-                "combined": round(score.combined_sentiment, 1) if score.combined_sentiment else None,
+                "news": (
+                    round(score.news_sentiment, 1) if score.news_sentiment else None
+                ),
+                "social": (
+                    round(score.social_sentiment, 1) if score.social_sentiment else None
+                ),
+                "combined": (
+                    round(score.combined_sentiment, 1)
+                    if score.combined_sentiment
+                    else None
+                ),
                 "velocity": round(score.velocity, 2) if score.velocity else None,
                 "direction": score.velocity_direction,
             }
@@ -216,8 +257,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Sentiment Scoring Job Runner")
-    parser.add_argument("--full", action="store_true", help="Run full sentiment analysis for all stocks")
-    parser.add_argument("--quick", action="store_true", help="Run quick analysis (top 10 stocks)")
+    parser.add_argument(
+        "--full", action="store_true", help="Run full sentiment analysis for all stocks"
+    )
+    parser.add_argument(
+        "--quick", action="store_true", help="Run quick analysis (top 10 stocks)"
+    )
     parser.add_argument("--symbols", nargs="+", help="Specific symbols to analyze")
     parser.add_argument("--no-save", action="store_true", help="Don't save to database")
 
@@ -230,13 +275,19 @@ if __name__ == "__main__":
         results = asyncio.run(run_quick_sentiment())
         print("\nQuick sentiment analysis:")
         for symbol, data in results.items():
-            print(f"  {symbol}: combined={data['combined']}, velocity={data['velocity']} ({data['direction']})")
+            print(
+                f"  {symbol}: combined={data['combined']}, velocity={data['velocity']} ({data['direction']})"
+            )
     elif args.symbols:
-        summary = asyncio.run(run_sentiment_job(symbols=args.symbols, save_to_db=not args.no_save))
+        summary = asyncio.run(
+            run_sentiment_job(symbols=args.symbols, save_to_db=not args.no_save)
+        )
         print(f"\nSentiment job complete: {summary}")
     else:
         print("Usage:")
-        print("  python sentiment_job.py --full           # Full analysis for all stocks")
+        print(
+            "  python sentiment_job.py --full           # Full analysis for all stocks"
+        )
         print("  python sentiment_job.py --quick          # Quick analysis (top 10)")
         print("  python sentiment_job.py --symbols AAPL MSFT  # Specific symbols")
         print("  python sentiment_job.py --full --no-save # Don't save to database")

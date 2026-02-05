@@ -50,6 +50,16 @@ export function formatPercent(
 }
 
 /**
+ * Format a number with locale-specific separators
+ */
+export function formatNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  return value.toLocaleString('en-US');
+}
+
+/**
  * Format a large number with abbreviations (K, M, B)
  */
 export function formatCompactNumber(value: number | null | undefined): string {

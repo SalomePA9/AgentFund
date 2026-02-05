@@ -7,7 +7,6 @@ Uses Fernet symmetric encryption with a server-side key.
 import base64
 import logging
 import os
-import secrets
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes

@@ -1,5 +1,5 @@
 """API routers for AgentFund."""
 
-from api import auth, agents, broker, market, reports, chat
+from api import agents, auth, broker, chat, market, reports
 
 __all__ = ["auth", "agents", "broker", "market", "reports", "chat"]

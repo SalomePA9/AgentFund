@@ -2,9 +2,10 @@
 Unit tests for agents module.
 """
 
-import pytest
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
+
+import pytest
 
 
 class TestAgentSchemas:
@@ -40,7 +41,7 @@ class TestAgentSchemas:
             name="Test Agent",
             strategy_type="momentum",
             allocated_capital=Decimal("10000"),
-            time_horizon_days=180
+            time_horizon_days=180,
         )
 
         assert agent.name == "Test Agent"
@@ -49,7 +50,7 @@ class TestAgentSchemas:
 
     def test_agent_create_with_all_params(self):
         """Test AgentCreate with all parameters."""
-        from api.agents import AgentCreate, StrategyParams, RiskParams
+        from api.agents import AgentCreate, RiskParams, StrategyParams
 
         agent = AgentCreate(
             name="Full Agent",
@@ -58,7 +59,7 @@ class TestAgentSchemas:
             strategy_params=StrategyParams(max_positions=15),
             risk_params=RiskParams(stop_loss_percentage=0.15),
             allocated_capital=Decimal("50000"),
-            time_horizon_days=365
+            time_horizon_days=365,
         )
 
         assert agent.persona == "aggressive"
@@ -70,7 +71,9 @@ class TestAgentEndpoints:
     """Tests for agent API endpoints."""
 
     @pytest.mark.api
-    def test_list_agents(self, client, mock_db, sample_agents, auth_headers, sample_user):
+    def test_list_agents(
+        self, client, mock_db, sample_agents, auth_headers, sample_user
+    ):
         """Test listing agents."""
         # First mock for auth
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
@@ -86,8 +89,12 @@ class TestAgentEndpoints:
                 response.data = [sample_user]
             return response
 
-        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.side_effect = side_effect
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = sample_agents
+        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.side_effect = (
+            side_effect
+        )
+        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+            sample_agents
+        )
 
         response = client.get("/api/agents", headers=auth_headers)
 
@@ -128,8 +135,12 @@ class TestAgentEndpoints:
             "created_at": "2024-01-01T00:00:00Z",
             "updated_at": "2024-01-01T00:00:00Z",
         }
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [created_agent]
-        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [sample_user]
+        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
+            created_agent
+        ]
+        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
+            sample_user
+        ]
 
         response = client.post(
             "/api/agents",
@@ -139,7 +150,7 @@ class TestAgentEndpoints:
                 "strategy_type": "momentum",
                 "allocated_capital": 10000,
                 "time_horizon_days": 180,
-            }
+            },
         )
 
         assert response.status_code == 201
@@ -147,7 +158,9 @@ class TestAgentEndpoints:
         assert data["name"] == "New Agent"
 
     @pytest.mark.api
-    def test_create_agent_invalid_strategy(self, client, mock_db, sample_user, auth_headers):
+    def test_create_agent_invalid_strategy(
+        self, client, mock_db, sample_user, auth_headers
+    ):
         """Test creating agent with invalid strategy type."""
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
@@ -161,14 +174,16 @@ class TestAgentEndpoints:
                 "strategy_type": "invalid_strategy",
                 "allocated_capital": 10000,
                 "time_horizon_days": 180,
-            }
+            },
         )
 
         assert response.status_code == 400
         assert "Invalid strategy" in response.json()["detail"]
 
     @pytest.mark.api
-    def test_create_agent_invalid_persona(self, client, mock_db, sample_user, auth_headers):
+    def test_create_agent_invalid_persona(
+        self, client, mock_db, sample_user, auth_headers
+    ):
         """Test creating agent with invalid persona."""
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
@@ -183,14 +198,16 @@ class TestAgentEndpoints:
                 "strategy_type": "momentum",
                 "allocated_capital": 10000,
                 "time_horizon_days": 180,
-            }
+            },
         )
 
         assert response.status_code == 400
         assert "Invalid persona" in response.json()["detail"]
 
     @pytest.mark.api
-    def test_get_agent_by_id(self, client, mock_db, sample_agent, sample_user, auth_headers):
+    def test_get_agent_by_id(
+        self, client, mock_db, sample_agent, sample_user, auth_headers
+    ):
         """Test getting a specific agent."""
         # Mock auth
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
@@ -201,10 +218,7 @@ class TestAgentEndpoints:
             sample_agent
         ]
 
-        response = client.get(
-            f"/api/agents/{sample_agent['id']}",
-            headers=auth_headers
-        )
+        response = client.get(f"/api/agents/{sample_agent['id']}", headers=auth_headers)
 
         assert response.status_code == 200
 
@@ -214,17 +228,20 @@ class TestAgentEndpoints:
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
         ]
-        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+        mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = (
+            []
+        )
 
         response = client.get(
-            "/api/agents/00000000-0000-0000-0000-000000000000",
-            headers=auth_headers
+            "/api/agents/00000000-0000-0000-0000-000000000000", headers=auth_headers
         )
 
         assert response.status_code == 404
 
     @pytest.mark.api
-    def test_pause_agent(self, client, mock_db, sample_agent, sample_user, auth_headers):
+    def test_pause_agent(
+        self, client, mock_db, sample_agent, sample_user, auth_headers
+    ):
         """Test pausing an agent."""
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
@@ -237,14 +254,15 @@ class TestAgentEndpoints:
         mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
 
         response = client.post(
-            f"/api/agents/{sample_agent['id']}/pause",
-            headers=auth_headers
+            f"/api/agents/{sample_agent['id']}/pause", headers=auth_headers
         )
 
         assert response.status_code == 200
 
     @pytest.mark.api
-    def test_resume_agent(self, client, mock_db, sample_agent, sample_user, auth_headers):
+    def test_resume_agent(
+        self, client, mock_db, sample_agent, sample_user, auth_headers
+    ):
         """Test resuming a paused agent."""
         sample_agent["status"] = "paused"
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
@@ -258,14 +276,15 @@ class TestAgentEndpoints:
         mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
 
         response = client.post(
-            f"/api/agents/{sample_agent['id']}/resume",
-            headers=auth_headers
+            f"/api/agents/{sample_agent['id']}/resume", headers=auth_headers
         )
 
         assert response.status_code == 200
 
     @pytest.mark.api
-    def test_delete_agent(self, client, mock_db, sample_agent, sample_user, auth_headers):
+    def test_delete_agent(
+        self, client, mock_db, sample_agent, sample_user, auth_headers
+    ):
         """Test deleting an agent."""
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
@@ -273,33 +292,41 @@ class TestAgentEndpoints:
         mock_db.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
             sample_agent
         ]
-        mock_db.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = []
-        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [sample_user]
+        mock_db.table.return_value.delete.return_value.eq.return_value.execute.return_value.data = (
+            []
+        )
+        mock_db.table.return_value.update.return_value.eq.return_value.execute.return_value.data = [
+            sample_user
+        ]
 
         response = client.delete(
-            f"/api/agents/{sample_agent['id']}",
-            headers=auth_headers
+            f"/api/agents/{sample_agent['id']}", headers=auth_headers
         )
 
         assert response.status_code == 204
 
     @pytest.mark.api
-    def test_get_agent_positions(self, client, mock_db, sample_agent, sample_positions, sample_user, auth_headers):
+    def test_get_agent_positions(
+        self, client, mock_db, sample_agent, sample_positions, sample_user, auth_headers
+    ):
         """Test getting agent positions."""
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
         ]
-        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = sample_positions
+        mock_db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = (
+            sample_positions
+        )
 
         response = client.get(
-            f"/api/agents/{sample_agent['id']}/positions",
-            headers=auth_headers
+            f"/api/agents/{sample_agent['id']}/positions", headers=auth_headers
         )
 
         assert response.status_code == 200
 
     @pytest.mark.api
-    def test_get_agent_activity(self, client, mock_db, sample_agent, sample_activity, sample_user, auth_headers):
+    def test_get_agent_activity(
+        self, client, mock_db, sample_agent, sample_activity, sample_user, auth_headers
+    ):
         """Test getting agent activity log."""
         mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
             sample_user
@@ -309,8 +336,7 @@ class TestAgentEndpoints:
         ]
 
         response = client.get(
-            f"/api/agents/{sample_agent['id']}/activity",
-            headers=auth_headers
+            f"/api/agents/{sample_agent['id']}/activity", headers=auth_headers
         )
 
         assert response.status_code == 200

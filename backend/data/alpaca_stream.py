@@ -68,7 +68,7 @@ class AlpacaStreamClient:
             auth_msg = {
                 "action": "auth",
                 "key": self.api_key,
-                "secret": self.api_secret
+                "secret": self.api_secret,
             }
             await self._ws.send(json.dumps(auth_msg))
 
@@ -97,7 +97,13 @@ class AlpacaStreamClient:
             self._ws = None
         logger.info("Disconnected from Alpaca WebSocket")
 
-    async def subscribe(self, symbols: list[str], quotes: bool = True, trades: bool = True, bars: bool = False):
+    async def subscribe(
+        self,
+        symbols: list[str],
+        quotes: bool = True,
+        trades: bool = True,
+        bars: bool = False,
+    ):
         """
         Subscribe to real-time data for specified symbols.
 
@@ -126,7 +132,13 @@ class AlpacaStreamClient:
 
         logger.info(f"Subscribed to {len(symbols)} symbols: {symbols[:10]}...")
 
-    async def unsubscribe(self, symbols: list[str], quotes: bool = True, trades: bool = True, bars: bool = False):
+    async def unsubscribe(
+        self,
+        symbols: list[str],
+        quotes: bool = True,
+        trades: bool = True,
+        bars: bool = False,
+    ):
         """Unsubscribe from real-time data for specified symbols."""
         if not self._ws:
             return
@@ -256,7 +268,9 @@ class AlpacaStreamClient:
                     connected = await self.connect()
                     if not connected:
                         await asyncio.sleep(self._reconnect_delay)
-                        self._reconnect_delay = min(self._reconnect_delay * 2, self._max_reconnect_delay)
+                        self._reconnect_delay = min(
+                            self._reconnect_delay * 2, self._max_reconnect_delay
+                        )
                         continue
 
                     # Resubscribe to symbols after reconnection
@@ -270,7 +284,9 @@ class AlpacaStreamClient:
                 logger.warning(f"WebSocket connection closed: {e}")
                 self._ws = None
                 await asyncio.sleep(self._reconnect_delay)
-                self._reconnect_delay = min(self._reconnect_delay * 2, self._max_reconnect_delay)
+                self._reconnect_delay = min(
+                    self._reconnect_delay * 2, self._max_reconnect_delay
+                )
 
             except Exception as e:
                 logger.error(f"WebSocket error: {e}")
@@ -288,6 +304,7 @@ class AlpacaStreamClient:
 # =============================================================================
 # Price Cache - Stores latest prices from WebSocket stream
 # =============================================================================
+
 
 class RealTimePriceCache:
     """
@@ -403,7 +420,9 @@ price_cache = RealTimePriceCache()
 stream_client: AlpacaStreamClient | None = None
 
 
-async def init_stream_client(api_key: str = None, api_secret: str = None) -> AlpacaStreamClient:
+async def init_stream_client(
+    api_key: str = None, api_secret: str = None
+) -> AlpacaStreamClient:
     """Initialize the global stream client."""
     global stream_client
 

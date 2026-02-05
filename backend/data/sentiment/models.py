@@ -177,9 +177,15 @@ class SentimentScore:
         """Convert to dictionary for serialization."""
         return {
             "symbol": self.symbol,
-            "news_sentiment": round(self.news_sentiment, 2) if self.news_sentiment else None,
-            "social_sentiment": round(self.social_sentiment, 2) if self.social_sentiment else None,
-            "combined_sentiment": round(self.combined_sentiment, 2) if self.combined_sentiment else None,
+            "news_sentiment": (
+                round(self.news_sentiment, 2) if self.news_sentiment else None
+            ),
+            "social_sentiment": (
+                round(self.social_sentiment, 2) if self.social_sentiment else None
+            ),
+            "combined_sentiment": (
+                round(self.combined_sentiment, 2) if self.combined_sentiment else None
+            ),
             "velocity": round(self.velocity, 2) if self.velocity else None,
             "velocity_direction": self.velocity_direction,
             "strength": self.strength.value if self.strength else None,
@@ -229,10 +235,18 @@ class NewsItem:
             "title": self.title,
             "source": self.source,
             "url": self.url,
-            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "published_at": (
+                self.published_at.isoformat() if self.published_at else None
+            ),
             "symbol": self.symbol,
-            "sentiment_score": round(self.sentiment_score, 2) if self.sentiment_score else None,
-            "sentiment_confidence": round(self.sentiment_confidence, 3) if self.sentiment_confidence else None,
+            "sentiment_score": (
+                round(self.sentiment_score, 2) if self.sentiment_score else None
+            ),
+            "sentiment_confidence": (
+                round(self.sentiment_confidence, 3)
+                if self.sentiment_confidence
+                else None
+            ),
         }
 
 
@@ -264,14 +278,22 @@ class SocialPost:
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
-            "content": self.content[:200] + "..." if len(self.content) > 200 else self.content,
+            "content": (
+                self.content[:200] + "..." if len(self.content) > 200 else self.content
+            ),
             "source": self.source.value,
             "author": self.author,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "symbol": self.symbol,
             "engagement": self.engagement,
-            "sentiment_score": round(self.sentiment_score, 2) if self.sentiment_score else None,
-            "sentiment_confidence": round(self.sentiment_confidence, 3) if self.sentiment_confidence else None,
+            "sentiment_score": (
+                round(self.sentiment_score, 2) if self.sentiment_score else None
+            ),
+            "sentiment_confidence": (
+                round(self.sentiment_confidence, 3)
+                if self.sentiment_confidence
+                else None
+            ),
         }
 
 

@@ -139,7 +139,9 @@ async def get_current_user(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 async def register(user: UserCreate, db: Annotated[Client, Depends(get_db)]):
     """Register a new user."""
     # Check if user already exists
@@ -153,12 +155,16 @@ async def register(user: UserCreate, db: Annotated[Client, Depends(get_db)]):
 
     # Create user
     hashed_password = get_password_hash(user.password)
-    result = db.table("users").insert(
-        {
-            "email": user.email,
-            "password_hash": hashed_password,
-        }
-    ).execute()
+    result = (
+        db.table("users")
+        .insert(
+            {
+                "email": user.email,
+                "password_hash": hashed_password,
+            }
+        )
+        .execute()
+    )
 
     if not result.data:
         raise HTTPException(

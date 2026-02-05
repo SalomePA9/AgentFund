@@ -73,12 +73,7 @@ async def get_team_summary(
     target_date = summary_date or date.today()
 
     # Get all user's agents
-    agents = (
-        db.table("agents")
-        .select("*")
-        .eq("user_id", current_user["id"])
-        .execute()
-    )
+    agents = db.table("agents").select("*").eq("user_id", current_user["id"]).execute()
 
     if not agents.data:
         return TeamSummaryResponse(
@@ -94,24 +89,30 @@ async def get_team_summary(
 
     # Calculate totals
     total_value = sum(float(a.get("total_value", 0) or 0) for a in agents.data)
-    total_allocated = sum(float(a.get("allocated_capital", 0) or 0) for a in agents.data)
+    total_allocated = sum(
+        float(a.get("allocated_capital", 0) or 0) for a in agents.data
+    )
 
     # Build agent summaries
     agent_summaries = []
     for agent in agents.data:
         agent_value = float(agent.get("total_value", 0) or 0)
         agent_allocated = float(agent.get("allocated_capital", 0) or 0)
-        total_return = ((agent_value / agent_allocated) - 1) * 100 if agent_allocated > 0 else 0
+        total_return = (
+            ((agent_value / agent_allocated) - 1) * 100 if agent_allocated > 0 else 0
+        )
 
-        agent_summaries.append({
-            "id": agent["id"],
-            "name": agent["name"],
-            "strategy_type": agent["strategy_type"],
-            "status": agent["status"],
-            "total_value": agent_value,
-            "daily_return_pct": agent.get("daily_return_pct", 0) or 0,
-            "total_return_pct": total_return,
-        })
+        agent_summaries.append(
+            {
+                "id": agent["id"],
+                "name": agent["name"],
+                "strategy_type": agent["strategy_type"],
+                "status": agent["status"],
+                "total_value": agent_value,
+                "daily_return_pct": agent.get("daily_return_pct", 0) or 0,
+                "total_return_pct": total_return,
+            }
+        )
 
     # Sort for top performers
     top_performers = sorted(
@@ -143,7 +144,9 @@ async def get_team_summary(
     ]
 
     # Calculate portfolio-level metrics
-    total_return_pct = ((total_value / total_allocated) - 1) * 100 if total_allocated > 0 else 0
+    total_return_pct = (
+        ((total_value / total_allocated) - 1) * 100 if total_allocated > 0 else 0
+    )
 
     return TeamSummaryResponse(
         date=target_date,

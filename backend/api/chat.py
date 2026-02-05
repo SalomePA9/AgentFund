@@ -86,20 +86,13 @@ async def get_chat_history(
 
     # Build query
     query = (
-        db.table("agent_chats")
-        .select("*", count="exact")
-        .eq("agent_id", str(agent_id))
+        db.table("agent_chats").select("*", count="exact").eq("agent_id", str(agent_id))
     )
 
     if before:
         query = query.lt("created_at", before.isoformat())
 
-    result = (
-        query
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
+    result = query.order("created_at", desc=True).limit(limit).execute()
 
     # Reverse to show oldest first
     messages = list(reversed(result.data))
@@ -137,11 +130,17 @@ async def send_message(
     agent = agent_result.data[0]
 
     # Save user message
-    user_msg_result = db.table("agent_chats").insert({
-        "agent_id": str(agent_id),
-        "role": "user",
-        "message": request.message,
-    }).execute()
+    user_msg_result = (
+        db.table("agent_chats")
+        .insert(
+            {
+                "agent_id": str(agent_id),
+                "role": "user",
+                "message": request.message,
+            }
+        )
+        .execute()
+    )
 
     if not user_msg_result.data:
         raise HTTPException(
@@ -157,16 +156,22 @@ async def send_message(
     agent_response_text = _generate_placeholder_response(agent, request.message)
 
     # Save agent response
-    agent_msg_result = db.table("agent_chats").insert({
-        "agent_id": str(agent_id),
-        "role": "agent",
-        "message": agent_response_text,
-        "context_used": {
-            "agent_name": agent["name"],
-            "persona": agent["persona"],
-            "strategy_type": agent["strategy_type"],
-        },
-    }).execute()
+    agent_msg_result = (
+        db.table("agent_chats")
+        .insert(
+            {
+                "agent_id": str(agent_id),
+                "role": "agent",
+                "message": agent_response_text,
+                "context_used": {
+                    "agent_name": agent["name"],
+                    "persona": agent["persona"],
+                    "strategy_type": agent["strategy_type"],
+                },
+            }
+        )
+        .execute()
+    )
 
     if not agent_msg_result.data:
         raise HTTPException(
@@ -224,10 +229,10 @@ def _generate_placeholder_response(agent: dict, user_message: str) -> str:
     # Simple placeholder responses based on persona
     persona_intros = {
         "analytical": f"Based on my analysis as {name}",
-        "aggressive": f"Let me be direct with you",
-        "conservative": f"Taking a measured approach",
-        "teacher": f"Great question! Let me explain",
-        "concise": f"Here's the key point",
+        "aggressive": "Let me be direct with you",
+        "conservative": "Taking a measured approach",
+        "teacher": "Great question! Let me explain",
+        "concise": "Here's the key point",
     }
 
     intro = persona_intros.get(persona, f"As {name}")

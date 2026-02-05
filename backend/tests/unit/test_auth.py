@@ -2,10 +2,9 @@
 Unit tests for authentication module.
 """
 
-import pytest
 from datetime import timedelta
-from unittest.mock import patch, MagicMock
 
+import pytest
 from jose import jwt
 
 
@@ -14,7 +13,7 @@ class TestPasswordHashing:
 
     def test_password_hashing(self):
         """Test that passwords are properly hashed."""
-        from api.auth import get_password_hash, verify_password
+        from api.auth import get_password_hash
 
         password = "secure_password_123"
         hashed = get_password_hash(password)
@@ -84,9 +83,7 @@ class TestTokenCreation:
         token = create_access_token(data={"sub": user_id})
 
         payload = jwt.decode(
-            token,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm]
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
         )
 
         assert payload["sub"] == user_id
@@ -100,9 +97,7 @@ class TestTokenCreation:
         token = create_access_token(data={"sub": "test-user"})
 
         payload = jwt.decode(
-            token,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm]
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
         )
 
         assert "exp" in payload
@@ -114,14 +109,11 @@ class TestTokenCreation:
 
         settings = get_settings()
         token = create_access_token(
-            data={"sub": "test-user"},
-            expires_delta=timedelta(minutes=5)
+            data={"sub": "test-user"}, expires_delta=timedelta(minutes=5)
         )
 
         payload = jwt.decode(
-            token,
-            settings.jwt_secret,
-            algorithms=[settings.jwt_algorithm]
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
         )
 
         assert "exp" in payload
@@ -141,8 +133,9 @@ class TestUserSchemas:
 
     def test_user_create_invalid_email(self):
         """Test UserCreate schema with invalid email."""
-        from api.auth import UserCreate
         from pydantic import ValidationError
+
+        from api.auth import UserCreate
 
         with pytest.raises(ValidationError):
             UserCreate(email="invalid-email", password="password123")
@@ -166,16 +159,20 @@ class TestAuthEndpoints:
     def test_register_success(self, client, mock_db):
         """Test successful user registration."""
         # Configure mock to return no existing user, then return created user
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
-        mock_db.table.return_value.insert.return_value.execute.return_value.data = [{
-            "id": "new-user-id",
-            "email": "newuser@example.com",
-            "created_at": "2024-01-01T00:00:00Z",
-        }]
+        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+            []
+        )
+        mock_db.table.return_value.insert.return_value.execute.return_value.data = [
+            {
+                "id": "new-user-id",
+                "email": "newuser@example.com",
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        ]
 
         response = client.post(
             "/api/auth/register",
-            json={"email": "newuser@example.com", "password": "password123"}
+            json={"email": "newuser@example.com", "password": "password123"},
         )
 
         assert response.status_code == 201
@@ -192,7 +189,7 @@ class TestAuthEndpoints:
 
         response = client.post(
             "/api/auth/register",
-            json={"email": "existing@example.com", "password": "password123"}
+            json={"email": "existing@example.com", "password": "password123"},
         )
 
         assert response.status_code == 400
@@ -213,7 +210,7 @@ class TestAuthEndpoints:
 
         response = client.post(
             "/api/auth/login",
-            data={"username": sample_user["email"], "password": password}
+            data={"username": sample_user["email"], "password": password},
         )
 
         assert response.status_code == 200
@@ -234,7 +231,7 @@ class TestAuthEndpoints:
 
         response = client.post(
             "/api/auth/login",
-            data={"username": sample_user["email"], "password": "wrong_password"}
+            data={"username": sample_user["email"], "password": "wrong_password"},
         )
 
         assert response.status_code == 401
@@ -242,11 +239,13 @@ class TestAuthEndpoints:
     @pytest.mark.api
     def test_login_nonexistent_user(self, client, mock_db):
         """Test login with non-existent user."""
-        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = []
+        mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = (
+            []
+        )
 
         response = client.post(
             "/api/auth/login",
-            data={"username": "nonexistent@example.com", "password": "password"}
+            data={"username": "nonexistent@example.com", "password": "password"},
         )
 
         assert response.status_code == 401
@@ -275,8 +274,7 @@ class TestAuthEndpoints:
     def test_get_current_user_invalid_token(self, client):
         """Test getting user info with invalid token."""
         response = client.get(
-            "/api/auth/me",
-            headers={"Authorization": "Bearer invalid-token"}
+            "/api/auth/me", headers={"Authorization": "Bearer invalid-token"}
         )
 
         assert response.status_code == 401

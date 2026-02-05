@@ -29,26 +29,28 @@ export function useMarketData(symbols: string[]) {
 
   // Initialize prices for symbols
   useEffect(() => {
-    const initialPrices = new Map<string, RealTimePrice>();
-    symbols.forEach((symbol) => {
-      const upperSymbol = symbol.toUpperCase();
-      if (!prices.has(upperSymbol)) {
-        initialPrices.set(upperSymbol, {
-          symbol: upperSymbol,
-          price: null,
-          bidPrice: null,
-          askPrice: null,
-          lastTradePrice: null,
-          lastTradeSize: null,
-          change: null,
-          changePercent: null,
-          lastUpdate: null,
-        });
-      }
+    setPrices((prev) => {
+      const updated = new Map(prev);
+      let hasChanges = false;
+      symbols.forEach((symbol) => {
+        const upperSymbol = symbol.toUpperCase();
+        if (!updated.has(upperSymbol)) {
+          updated.set(upperSymbol, {
+            symbol: upperSymbol,
+            price: null,
+            bidPrice: null,
+            askPrice: null,
+            lastTradePrice: null,
+            lastTradeSize: null,
+            change: null,
+            changePercent: null,
+            lastUpdate: null,
+          });
+          hasChanges = true;
+        }
+      });
+      return hasChanges ? updated : prev;
     });
-    if (initialPrices.size > 0) {
-      setPrices((prev) => new Map([...prev, ...initialPrices]));
-    }
   }, [symbols]);
 
   // Handle quote updates

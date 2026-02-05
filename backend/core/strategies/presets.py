@@ -28,10 +28,10 @@ from core.strategies.base import (
     StrategyType,
 )
 
-
 # =============================================================================
 # Original 4 Strategies (Simple Presets)
 # =============================================================================
+
 
 def momentum_strategy(
     name: str = "Momentum",
@@ -86,7 +86,7 @@ def momentum_strategy(
             "top_percentile": top_percentile,
             "allow_short": allow_short,
             "equal_weight": True,
-        }
+        },
     )
 
 
@@ -142,7 +142,7 @@ def quality_value_strategy(
             "top_percentile": top_percentile,
             "allow_short": allow_short,
             "equal_weight": True,
-        }
+        },
     )
 
 
@@ -200,7 +200,7 @@ def quality_momentum_strategy(
             "top_percentile": top_percentile,
             "allow_short": allow_short,
             "equal_weight": True,
-        }
+        },
     )
 
 
@@ -259,13 +259,14 @@ def dividend_growth_strategy(
             "top_percentile": top_percentile,
             "allow_short": False,  # No shorting for dividend strategy
             "equal_weight": True,
-        }
+        },
     )
 
 
 # =============================================================================
 # Advanced 5 Strategies (Power User Presets)
 # =============================================================================
+
 
 def trend_following_strategy(
     name: str = "Trend Following",
@@ -316,7 +317,7 @@ def trend_following_strategy(
             "long_window": 60,
             "allow_short": allow_short,
             "min_signal_strength": 20,
-        }
+        },
     )
 
 
@@ -367,7 +368,7 @@ def short_term_reversal_strategy(
             "holding_days": holding_days,
             "min_zscore": 1.5,
             "market_neutral": True,
-        }
+        },
     )
 
 
@@ -418,7 +419,7 @@ def statistical_arbitrage_strategy(
             "zscore_lookback": 60,
             "min_zscore": 2.0,
             "max_zscore": 4.0,
-        }
+        },
     )
 
 
@@ -468,7 +469,7 @@ def volatility_premium_strategy(
             "low_vol_only": low_vol_only,
             "vol_threshold_percentile": 30,
             "sentiment_crisis_threshold": -50,
-        }
+        },
     )
 
 
@@ -502,7 +503,9 @@ def get_preset(name: str, **kwargs) -> StrategyConfig:
         StrategyConfig instance
     """
     if name not in STRATEGY_PRESETS:
-        raise ValueError(f"Unknown preset: {name}. Available: {list(STRATEGY_PRESETS.keys())}")
+        raise ValueError(
+            f"Unknown preset: {name}. Available: {list(STRATEGY_PRESETS.keys())}"
+        )
 
     return STRATEGY_PRESETS[name](**kwargs)
 

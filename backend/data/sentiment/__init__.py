@@ -14,10 +14,7 @@ Exports:
 - Data models: SentimentResult, SentimentScore, etc.
 """
 
-from data.sentiment.base import (
-    CombinedSentimentCalculator,
-    SentimentAnalyzer,
-)
+from data.sentiment.base import CombinedSentimentCalculator, SentimentAnalyzer
 from data.sentiment.combined import (
     SentimentOrchestrator,
     analyze_all_sentiment,

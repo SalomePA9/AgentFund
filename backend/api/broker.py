@@ -11,9 +11,9 @@ from pydantic import BaseModel
 from supabase import Client
 
 from api.auth import get_current_user
+from core.broker import AlpacaBroker, create_broker
+from core.security import decrypt_api_key, encrypt_api_key
 from database import get_db
-from core.broker import AlpacaBroker, BrokerMode, create_broker
-from core.security import encrypt_api_key, decrypt_api_key
 
 router = APIRouter()
 
@@ -357,9 +357,9 @@ async def switch_trading_mode(
         account = broker.get_account()
 
         # Update mode in database
-        db.table("users").update(
-            {"alpaca_paper_mode": new_paper_mode}
-        ).eq("id", current_user["id"]).execute()
+        db.table("users").update({"alpaca_paper_mode": new_paper_mode}).eq(
+            "id", current_user["id"]
+        ).execute()
 
         return BrokerStatus(
             connected=True,

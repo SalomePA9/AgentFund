@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+
 from pydantic import BaseModel
 
 
@@ -94,9 +95,7 @@ class Position(BaseModel):
         self.current_price = price
         self.current_value = price * self.shares
         self.unrealized_pnl = self.current_value - self.cost_basis
-        self.unrealized_pnl_pct = float(
-            (price / self.entry_price - 1) * 100
-        )
+        self.unrealized_pnl_pct = float((price / self.entry_price - 1) * 100)
 
     class Config:
         from_attributes = True

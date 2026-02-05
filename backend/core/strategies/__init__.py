@@ -51,70 +51,62 @@ Sentiment Integration Modes:
 """
 
 # Base classes and types
-from core.strategies.base import (
-    # Enums
-    StrategyType,
-    SignalType,
-    PositionSide,
-    SentimentMode,
-    RiskMode,
-    # Data classes
-    Signal,
-    Position,
-    StrategyOutput,
-    SentimentConfig,
-    RiskConfig,
-    StrategyConfig,
-    # Base classes
-    SignalGenerator,
+from core.strategies.base import (  # Enums; Data classes; Base classes; Registry
     BaseStrategy,
-    # Registry
+    Position,
+    PositionSide,
+    RiskConfig,
+    RiskMode,
+    SentimentConfig,
+    SentimentMode,
+    Signal,
+    SignalGenerator,
+    SignalType,
+    StrategyConfig,
+    StrategyOutput,
     StrategyRegistry,
-)
-
-# Signal generators
-from core.strategies.signals import (
-    TimeSeriesMomentumSignal,
-    CrossSectionalMomentumSignal,
-    ValueSignal,
-    QualitySignal,
-    DividendYieldSignal,
-    NewsSentimentSignal,
-    SocialSentimentSignal,
-    SentimentVelocitySignal,
-    RealizedVolatilitySignal,
-    ShortTermReversalSignal,
-    ZScoreSignal,
-    SignalCombiner,
+    StrategyType,
 )
 
 # Strategy implementations
 from core.strategies.implementations import (
-    TrendFollowingStrategy,
     CrossSectionalFactorStrategy,
     ShortTermReversalStrategy,
     StatisticalArbitrageStrategy,
+    TrendFollowingStrategy,
     VolatilityPremiumStrategy,
 )
 
 # Strategy presets (pre-configured strategies)
-from core.strategies.presets import (
-    # Original 4 strategies
-    momentum_strategy,
-    quality_value_strategy,
-    quality_momentum_strategy,
-    dividend_growth_strategy,
-    # Advanced 5 strategies
-    trend_following_strategy,
-    short_term_reversal_strategy,
-    statistical_arbitrage_strategy,
-    volatility_premium_strategy,
-    # Registry
+from core.strategies.presets import (  # Original 4 strategies; Advanced 5 strategies; Registry
     STRATEGY_PRESETS,
+    dividend_growth_strategy,
     get_preset,
     list_presets,
+    momentum_strategy,
+    quality_momentum_strategy,
+    quality_value_strategy,
+    short_term_reversal_strategy,
+    statistical_arbitrage_strategy,
+    trend_following_strategy,
+    volatility_premium_strategy,
 )
 
+# Signal generators
+from core.strategies.signals import (
+    CrossSectionalMomentumSignal,
+    DividendYieldSignal,
+    NewsSentimentSignal,
+    QualitySignal,
+    RealizedVolatilitySignal,
+    SentimentVelocitySignal,
+    ShortTermReversalSignal,
+    SignalCombiner,
+    SocialSentimentSignal,
+    TimeSeriesMomentumSignal,
+    ValueSignal,
+    ZScoreSignal,
+)
 
 __all__ = [
     # Enums

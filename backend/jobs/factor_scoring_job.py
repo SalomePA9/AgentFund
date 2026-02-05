@@ -7,7 +7,6 @@ Runs as part of the nightly job pipeline.
 
 import asyncio
 import logging
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,8 +16,8 @@ _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from core.factors import FactorCalculator, FactorScores
-from database import get_supabase_client
+from core.factors import FactorCalculator, FactorScores  # noqa: E402
+from database import get_supabase_client  # noqa: E402
 
 # Get database client
 supabase = get_supabase_client()
@@ -29,7 +28,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-    ]
+    ],
 )
 
 logger = logging.getLogger(__name__)
@@ -99,33 +98,37 @@ async def update_factor_scores(scores: dict[str, FactorScores]) -> tuple[int, in
     symbols = list(scores.keys())
 
     for i in range(0, len(symbols), batch_size):
-        batch_symbols = symbols[i:i + batch_size]
+        batch_symbols = symbols[i : i + batch_size]
         batch_data = []
 
         for symbol in batch_symbols:
             score = scores[symbol]
-            batch_data.append({
-                "symbol": symbol,
-                "momentum_score": score.momentum_score,
-                "value_score": score.value_score,
-                "quality_score": score.quality_score,
-                "dividend_score": score.dividend_score,
-                "volatility_score": score.volatility_score,
-                "composite_score": score.composite_score,
-            })
+            batch_data.append(
+                {
+                    "symbol": symbol,
+                    "momentum_score": score.momentum_score,
+                    "value_score": score.value_score,
+                    "quality_score": score.quality_score,
+                    "dividend_score": score.dividend_score,
+                    "volatility_score": score.volatility_score,
+                    "composite_score": score.composite_score,
+                }
+            )
 
         try:
             # Update stocks table with factor scores
             for data in batch_data:
-                supabase.table("stocks").update({
-                    "momentum_score": data["momentum_score"],
-                    "value_score": data["value_score"],
-                    "quality_score": data["quality_score"],
-                    "dividend_score": data["dividend_score"],
-                    "volatility_score": data["volatility_score"],
-                    "composite_score": data["composite_score"],
-                    "scores_updated_at": datetime.utcnow().isoformat(),
-                }).eq("symbol", data["symbol"]).execute()
+                supabase.table("stocks").update(
+                    {
+                        "momentum_score": data["momentum_score"],
+                        "value_score": data["value_score"],
+                        "quality_score": data["quality_score"],
+                        "dividend_score": data["dividend_score"],
+                        "volatility_score": data["volatility_score"],
+                        "composite_score": data["composite_score"],
+                        "scores_updated_at": datetime.utcnow().isoformat(),
+                    }
+                ).eq("symbol", data["symbol"]).execute()
 
             success += len(batch_data)
 

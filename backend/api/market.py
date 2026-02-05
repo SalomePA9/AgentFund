@@ -172,7 +172,10 @@ async def list_stocks(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
     sector: str | None = None,
-    sort_by: str = Query("market_cap", regex="^(market_cap|momentum_score|value_score|quality_score|price)$"),
+    sort_by: str = Query(
+        "market_cap",
+        regex="^(market_cap|momentum_score|value_score|quality_score|price)$",
+    ),
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
 ):
     """Get paginated list of stocks."""
@@ -341,31 +344,34 @@ async def screen_stocks(
     # Post-process: MA filters (price > MA)
     if screen.above_ma_200:
         filtered = [
-            s for s in filtered
+            s
+            for s in filtered
             if s.get("price") and s.get("ma_200") and s["price"] > s["ma_200"]
         ]
     if screen.above_ma_100:
         filtered = [
-            s for s in filtered
+            s
+            for s in filtered
             if s.get("price") and s.get("ma_100") and s["price"] > s["ma_100"]
         ]
     if screen.above_ma_30:
         filtered = [
-            s for s in filtered
+            s
+            for s in filtered
             if s.get("price") and s.get("ma_30") and s["price"] > s["ma_30"]
         ]
 
     # Post-process: exclude sectors
     if screen.exclude_sectors:
         filtered = [
-            s for s in filtered
-            if s.get("sector") not in screen.exclude_sectors
+            s for s in filtered if s.get("sector") not in screen.exclude_sectors
         ]
 
     # Post-process: sentiment triangulation (news and social must agree)
     if screen.sentiment_triangulation:
         filtered = [
-            s for s in filtered
+            s
+            for s in filtered
             if _sentiments_agree(s.get("news_sentiment"), s.get("social_sentiment"))
         ]
 
@@ -398,9 +404,14 @@ async def get_sentiment(
     Optionally includes historical sentiment data for charting.
     """
     # Get current sentiment from stocks table
-    stock = db.table("stocks").select(
-        "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
-    ).eq("symbol", symbol.upper()).execute()
+    stock = (
+        db.table("stocks")
+        .select(
+            "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
+        )
+        .eq("symbol", symbol.upper())
+        .execute()
+    )
 
     if not stock.data:
         raise HTTPException(
@@ -477,9 +488,14 @@ async def get_sentiment_batch(
 
     symbols = [s.upper() for s in request.symbols]
 
-    result = db.table("stocks").select(
-        "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
-    ).in_("symbol", symbols).execute()
+    result = (
+        db.table("stocks")
+        .select(
+            "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
+        )
+        .in_("symbol", symbols)
+        .execute()
+    )
 
     data = {}
     for stock in result.data:
@@ -516,36 +532,46 @@ async def get_trending_sentiment(
     - Fastest declining: Highest negative velocity
     """
     # Most bullish
-    bullish = db.table("stocks").select(
-        "symbol, name, combined_sentiment, sentiment_velocity, sector"
-    ).not_.is_("combined_sentiment", "null").order(
-        "combined_sentiment", desc=True
-    ).limit(limit).execute()
+    bullish = (
+        db.table("stocks")
+        .select("symbol, name, combined_sentiment, sentiment_velocity, sector")
+        .not_.is_("combined_sentiment", "null")
+        .order("combined_sentiment", desc=True)
+        .limit(limit)
+        .execute()
+    )
 
     # Most bearish
-    bearish = db.table("stocks").select(
-        "symbol, name, combined_sentiment, sentiment_velocity, sector"
-    ).not_.is_("combined_sentiment", "null").order(
-        "combined_sentiment", desc=False
-    ).limit(limit).execute()
+    bearish = (
+        db.table("stocks")
+        .select("symbol, name, combined_sentiment, sentiment_velocity, sector")
+        .not_.is_("combined_sentiment", "null")
+        .order("combined_sentiment", desc=False)
+        .limit(limit)
+        .execute()
+    )
 
     # Fastest improving (positive velocity)
-    improving = db.table("stocks").select(
-        "symbol, name, combined_sentiment, sentiment_velocity, sector"
-    ).not_.is_("sentiment_velocity", "null").gt(
-        "sentiment_velocity", 0
-    ).order(
-        "sentiment_velocity", desc=True
-    ).limit(limit).execute()
+    improving = (
+        db.table("stocks")
+        .select("symbol, name, combined_sentiment, sentiment_velocity, sector")
+        .not_.is_("sentiment_velocity", "null")
+        .gt("sentiment_velocity", 0)
+        .order("sentiment_velocity", desc=True)
+        .limit(limit)
+        .execute()
+    )
 
     # Fastest declining (negative velocity)
-    declining = db.table("stocks").select(
-        "symbol, name, combined_sentiment, sentiment_velocity, sector"
-    ).not_.is_("sentiment_velocity", "null").lt(
-        "sentiment_velocity", 0
-    ).order(
-        "sentiment_velocity", desc=False
-    ).limit(limit).execute()
+    declining = (
+        db.table("stocks")
+        .select("symbol, name, combined_sentiment, sentiment_velocity, sector")
+        .not_.is_("sentiment_velocity", "null")
+        .lt("sentiment_velocity", 0)
+        .order("sentiment_velocity", desc=False)
+        .limit(limit)
+        .execute()
+    )
 
     return TrendingSentimentResponse(
         most_bullish=bullish.data,
@@ -639,7 +665,12 @@ async def calculate_position_size(
     from core.factors import calculate_position_size as calc_size
 
     # Get stock data
-    result = db.table("stocks").select("price, atr").eq("symbol", request.symbol.upper()).execute()
+    result = (
+        db.table("stocks")
+        .select("price, atr")
+        .eq("symbol", request.symbol.upper())
+        .execute()
+    )
 
     if not result.data:
         raise HTTPException(

@@ -173,9 +173,15 @@ async def create_agent(
     # Validate strategy type (original 4 + advanced 5)
     valid_strategies = [
         # Original strategies
-        "momentum", "quality_value", "quality_momentum", "dividend_growth",
+        "momentum",
+        "quality_value",
+        "quality_momentum",
+        "dividend_growth",
         # Advanced strategies
-        "trend_following", "short_term_reversal", "statistical_arbitrage", "volatility_premium",
+        "trend_following",
+        "short_term_reversal",
+        "statistical_arbitrage",
+        "volatility_premium",
     ]
     if agent.strategy_type not in valid_strategies:
         raise HTTPException(
@@ -209,24 +215,28 @@ async def create_agent(
     end_date = start_date + timedelta(days=agent.time_horizon_days)
 
     # Create agent
-    result = db.table("agents").insert(
-        {
-            "user_id": current_user["id"],
-            "name": agent.name,
-            "persona": agent.persona,
-            "status": "active",
-            "strategy_type": agent.strategy_type,
-            "strategy_params": agent.strategy_params.model_dump(),
-            "risk_params": agent.risk_params.model_dump(),
-            "allocated_capital": float(agent.allocated_capital),
-            "cash_balance": float(agent.allocated_capital),
-            "time_horizon_days": agent.time_horizon_days,
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "total_value": float(agent.allocated_capital),
-            "total_return_pct": 0.0,
-        }
-    ).execute()
+    result = (
+        db.table("agents")
+        .insert(
+            {
+                "user_id": current_user["id"],
+                "name": agent.name,
+                "persona": agent.persona,
+                "status": "active",
+                "strategy_type": agent.strategy_type,
+                "strategy_params": agent.strategy_params.model_dump(),
+                "risk_params": agent.risk_params.model_dump(),
+                "allocated_capital": float(agent.allocated_capital),
+                "cash_balance": float(agent.allocated_capital),
+                "time_horizon_days": agent.time_horizon_days,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "total_value": float(agent.allocated_capital),
+                "total_return_pct": 0.0,
+            }
+        )
+        .execute()
+    )
 
     if not result.data:
         raise HTTPException(
@@ -236,9 +246,9 @@ async def create_agent(
 
     # Update user's allocated capital
     new_allocated = user_allocated + agent.allocated_capital
-    db.table("users").update(
-        {"allocated_capital": float(new_allocated)}
-    ).eq("id", current_user["id"]).execute()
+    db.table("users").update({"allocated_capital": float(new_allocated)}).eq(
+        "id", current_user["id"]
+    ).execute()
 
     return result.data[0]
 
@@ -304,12 +314,7 @@ async def update_agent(
     if not update_data:
         return existing.data[0]
 
-    result = (
-        db.table("agents")
-        .update(update_data)
-        .eq("id", str(agent_id))
-        .execute()
-    )
+    result = db.table("agents").update(update_data).eq("id", str(agent_id)).execute()
 
     return result.data[0]
 
@@ -340,16 +345,17 @@ async def delete_agent(
 
     # Return allocated capital to user
     user_allocated = Decimal(str(current_user.get("allocated_capital", 0)))
-    agent_value = Decimal(str(agent.get("total_value", agent["allocated_capital"])))
-    new_allocated = max(Decimal("0"), user_allocated - Decimal(str(agent["allocated_capital"])))
+    new_allocated = max(
+        Decimal("0"), user_allocated - Decimal(str(agent["allocated_capital"]))
+    )
 
     # Delete agent (cascade will delete positions, activity, etc.)
     db.table("agents").delete().eq("id", str(agent_id)).execute()
 
     # Update user's allocated capital
-    db.table("users").update(
-        {"allocated_capital": float(new_allocated)}
-    ).eq("id", current_user["id"]).execute()
+    db.table("users").update({"allocated_capital": float(new_allocated)}).eq(
+        "id", current_user["id"]
+    ).execute()
 
 
 @router.post("/{agent_id}/pause", response_model=AgentResponse)
@@ -514,10 +520,7 @@ async def get_agent_performance(
 
     # Get position counts
     positions = (
-        db.table("positions")
-        .select("status")
-        .eq("agent_id", str(agent_id))
-        .execute()
+        db.table("positions").select("status").eq("agent_id", str(agent_id)).execute()
     )
 
     open_count = sum(1 for p in positions.data if p["status"] == "open")

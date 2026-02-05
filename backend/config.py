@@ -4,6 +4,7 @@ Loads environment variables from .env file.
 """
 
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings
 
 

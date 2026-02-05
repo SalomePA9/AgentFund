@@ -12,12 +12,7 @@ from typing import Any
 
 from config import get_settings
 from data.sentiment.base import CombinedSentimentCalculator
-from data.sentiment.models import (
-    SentimentHistoryRecord,
-    SentimentResult,
-    SentimentScore,
-    SentimentSource,
-)
+from data.sentiment.models import SentimentHistoryRecord, SentimentScore
 from data.sentiment.news import NewsSentimentAnalyzer
 from data.sentiment.social import SocialSentimentAnalyzer
 
@@ -161,8 +156,7 @@ class SentimentOrchestrator:
 
             # Process batch concurrently
             tasks = [
-                self.analyze_symbol(s, historical_map.get(s.upper()))
-                for s in batch
+                self.analyze_symbol(s, historical_map.get(s.upper())) for s in batch
             ]
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -214,7 +208,9 @@ class SentimentOrchestrator:
                 records.append(
                     SentimentHistoryRecord(
                         symbol=row["symbol"],
-                        recorded_at=datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00")),
+                        recorded_at=datetime.fromisoformat(
+                            row["recorded_at"].replace("Z", "+00:00")
+                        ),
                         news_sentiment=row.get("news_sentiment"),
                         social_sentiment=row.get("social_sentiment"),
                         combined_sentiment=row.get("combined_sentiment"),
@@ -262,7 +258,9 @@ class SentimentOrchestrator:
                     historical_map[symbol].append(
                         SentimentHistoryRecord(
                             symbol=symbol,
-                            recorded_at=datetime.fromisoformat(row["recorded_at"].replace("Z", "+00:00")),
+                            recorded_at=datetime.fromisoformat(
+                                row["recorded_at"].replace("Z", "+00:00")
+                            ),
                             news_sentiment=row.get("news_sentiment"),
                             social_sentiment=row.get("social_sentiment"),
                             combined_sentiment=row.get("combined_sentiment"),
@@ -302,12 +300,14 @@ class SentimentOrchestrator:
         for symbol, score in scores.items():
             try:
                 # Update stocks table with current sentiment
-                self._db.table("stocks").update({
-                    "news_sentiment": score.news_sentiment,
-                    "social_sentiment": score.social_sentiment,
-                    "combined_sentiment": score.combined_sentiment,
-                    "sentiment_velocity": score.velocity,
-                }).eq("symbol", symbol).execute()
+                self._db.table("stocks").update(
+                    {
+                        "news_sentiment": score.news_sentiment,
+                        "social_sentiment": score.social_sentiment,
+                        "combined_sentiment": score.combined_sentiment,
+                        "sentiment_velocity": score.velocity,
+                    }
+                ).eq("symbol", symbol).execute()
 
                 # Create history record
                 history_record = self._combiner.create_history_record(score)

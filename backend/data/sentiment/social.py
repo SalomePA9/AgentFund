@@ -220,7 +220,9 @@ class AlphaVantageSentimentAnalyzer(SentimentAnalyzer):
             api_key: Alpha Vantage API key (from settings if not provided)
             **kwargs: Additional args for base SentimentAnalyzer
         """
-        super().__init__(source=SentimentSource.STOCKTWITS, **kwargs)  # Reuse source enum
+        super().__init__(
+            source=SentimentSource.STOCKTWITS, **kwargs
+        )  # Reuse source enum
 
         settings = get_settings()
         self.api_key = api_key or settings.alphavantage_api_key
@@ -271,7 +273,9 @@ class AlphaVantageSentimentAnalyzer(SentimentAnalyzer):
 
             # Check for API limit message
             if "Note" in data or "Information" in data:
-                logger.warning(f"Alpha Vantage API limit: {data.get('Note') or data.get('Information')}")
+                logger.warning(
+                    f"Alpha Vantage API limit: {data.get('Note') or data.get('Information')}"
+                )
                 return []
 
             feed = data.get("feed", [])
@@ -285,18 +289,24 @@ class AlphaVantageSentimentAnalyzer(SentimentAnalyzer):
                 ticker_sentiments = item.get("ticker_sentiment", [])
                 for ts in ticker_sentiments:
                     if ts.get("ticker") == symbol:
-                        relevant_items.append({
-                            "title": item.get("title", ""),
-                            "source": item.get("source", ""),
-                            "url": item.get("url", ""),
-                            "time_published": item.get("time_published", ""),
-                            "sentiment_score": float(ts.get("ticker_sentiment_score", 0)),
-                            "relevance_score": float(ts.get("relevance_score", 0)),
-                            "sentiment_label": ts.get("ticker_sentiment_label", ""),
-                        })
+                        relevant_items.append(
+                            {
+                                "title": item.get("title", ""),
+                                "source": item.get("source", ""),
+                                "url": item.get("url", ""),
+                                "time_published": item.get("time_published", ""),
+                                "sentiment_score": float(
+                                    ts.get("ticker_sentiment_score", 0)
+                                ),
+                                "relevance_score": float(ts.get("relevance_score", 0)),
+                                "sentiment_label": ts.get("ticker_sentiment_label", ""),
+                            }
+                        )
                         break
 
-            logger.debug(f"Fetched {len(relevant_items)} Alpha Vantage items for {symbol}")
+            logger.debug(
+                f"Fetched {len(relevant_items)} Alpha Vantage items for {symbol}"
+            )
             return relevant_items
 
         except httpx.HTTPError as e:
@@ -382,19 +392,25 @@ class SocialSentimentAnalyzer:
         self.alphavantage_weight = alphavantage_weight / total
 
         # Initialize individual analyzers
-        self._stocktwits = StockTwitsSentimentAnalyzer(
-            cache_ttl_minutes=cache_ttl_minutes
-        ) if settings.stocktwits_enabled else None
+        self._stocktwits = (
+            StockTwitsSentimentAnalyzer(cache_ttl_minutes=cache_ttl_minutes)
+            if settings.stocktwits_enabled
+            else None
+        )
 
-        self._alphavantage = AlphaVantageSentimentAnalyzer(
-            cache_ttl_minutes=cache_ttl_minutes
-        ) if settings.alphavantage_api_key else None
+        self._alphavantage = (
+            AlphaVantageSentimentAnalyzer(cache_ttl_minutes=cache_ttl_minutes)
+            if settings.alphavantage_api_key
+            else None
+        )
 
         # Combined cache
         self._cache: dict[str, tuple[SentimentResult, datetime]] = {}
         self.cache_ttl_minutes = cache_ttl_minutes
 
-    async def analyze_symbol(self, symbol: str, use_cache: bool = True) -> SentimentResult:
+    async def analyze_symbol(
+        self, symbol: str, use_cache: bool = True
+    ) -> SentimentResult:
         """
         Analyze social sentiment for a symbol from all sources.
 
@@ -410,7 +426,9 @@ class SocialSentimentAnalyzer:
         # Check cache
         if use_cache and symbol in self._cache:
             cached_result, cached_time = self._cache[symbol]
-            if datetime.utcnow() - cached_time < timedelta(minutes=self.cache_ttl_minutes):
+            if datetime.utcnow() - cached_time < timedelta(
+                minutes=self.cache_ttl_minutes
+            ):
                 return cached_result
 
         results = []

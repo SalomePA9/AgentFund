@@ -6,14 +6,13 @@ Fetches stock data from yfinance, calculates moving averages, and stores in Supa
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
 import yfinance as yf
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from config import settings
 from database import supabase
 
 logger = logging.getLogger(__name__)
@@ -24,76 +23,662 @@ logger = logging.getLogger(__name__)
 
 # S&P 500 Components (as of early 2026)
 SP500_TICKERS = [
-    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "BRK.B", "UNH", "XOM",
-    "LLY", "JPM", "JNJ", "V", "PG", "MA", "AVGO", "HD", "CVX", "MRK",
-    "ABBV", "COST", "PEP", "KO", "ADBE", "WMT", "MCD", "CSCO", "CRM", "BAC",
-    "PFE", "TMO", "ACN", "NFLX", "AMD", "ABT", "LIN", "DIS", "ORCL", "CMCSA",
-    "DHR", "NKE", "VZ", "INTC", "WFC", "PM", "TXN", "UNP", "COP", "QCOM",
-    "INTU", "RTX", "BMY", "UPS", "LOW", "SPGI", "CAT", "HON", "NEE", "ELV",
-    "BA", "GE", "PLD", "AMAT", "IBM", "DE", "AMGN", "T", "MS", "AXP",
-    "MDT", "GS", "BLK", "ISRG", "SYK", "ADI", "GILD", "BKNG", "ADP", "VRTX",
-    "LMT", "SBUX", "MDLZ", "MMC", "TJX", "REGN", "ETN", "CB", "CI", "MO",
-    "LRCX", "PGR", "ZTS", "C", "SCHW", "PANW", "NOW", "BSX", "CME", "SNPS",
-    "CVS", "EOG", "FI", "SO", "TMUS", "SLB", "BDX", "DUK", "MU", "ITW",
-    "NOC", "CDNS", "KLAC", "APD", "AON", "SHW", "ICE", "WM", "HUM", "FCX",
-    "CL", "PYPL", "MCK", "CMG", "PNC", "EQIX", "TGT", "ORLY", "EMR", "USB",
-    "MMM", "NSC", "ROP", "MSI", "GD", "PSX", "MPC", "MAR", "TDG", "EL",
-    "APH", "AIG", "PXD", "ECL", "NXPI", "AZO", "ADSK", "AFL", "HES", "OXY",
-    "TT", "CSX", "MCHP", "SRE", "FTNT", "GM", "PCAR", "VLO", "AEP", "F",
-    "CCI", "PSA", "CARR", "DXCM", "TEL", "KMB", "CTAS", "NUE", "D", "HLT",
-    "JCI", "WELL", "DVN", "MRNA", "MET", "AJG", "MNST", "O", "MSCI", "IQV",
-    "KDP", "GWW", "ANET", "STZ", "DOW", "AMP", "PRU", "ALL", "KHC", "SPG",
-    "BK", "GIS", "EXC", "BIIB", "FDX", "CMI", "A", "SYY", "PAYX", "YUM",
-    "CTVA", "IDXX", "PCG", "OTIS", "ED", "DG", "FAST", "ROST", "VRSK", "DHI",
-    "ON", "AME", "HAL", "APTV", "RMD", "DLR", "EW", "CEG", "WEC", "PPG",
-    "CBRE", "ODFL", "WMB", "EA", "CPRT", "ROK", "GEHC", "EXR", "DD", "MTD",
-    "XEL", "KR", "ALB", "WST", "OKE", "ACGL", "HIG", "KEYS", "AWK", "BKR",
-    "GLW", "LHX", "IR", "DLTR", "IT", "CDW", "ZBH", "ANSS", "HPQ", "VICI",
-    "HSY", "CAH", "LEN", "WBD", "AVB", "PEG", "GPN", "ILMN", "URI", "STT",
-    "VMC", "TSCO", "MLM", "EBAY", "RJF", "IFF", "ES", "NVR", "EIX", "FTV",
-    "CHD", "WAB", "DFS", "DOV", "ULTA", "PWR", "GRMN", "MPWR", "HWM", "ADM",
-    "FRC", "TRV", "XYL", "EFX", "TROW", "BR", "BAX", "COO", "ALGN", "EQR",
-    "WTW", "AEE", "FITB", "MOH", "LUV", "PPL", "FANG", "DAL", "MTB", "NTRS",
-    "ARE", "CTRA", "INVH", "GPC", "HPE", "TTWO", "SBAC", "WY", "K", "CINF",
-    "WAT", "BRO", "MKC", "HUBB", "TYL", "LYB", "STE", "TRGP", "CNC", "DRI",
-    "CLX", "TDY", "RF", "FE", "HOLX", "EXPE", "VTR", "HRL", "MAA", "IP",
-    "BALL", "NTAP", "PKI", "AES", "ESS", "DTE", "ATO", "SWKS", "IEX", "CNP",
-    "J", "EXPD", "ETR", "NDAQ", "OMC", "MRO", "NI", "COF", "CAG", "HBAN",
-    "JBHT", "NRG", "KEY", "AMCR", "AKAM", "BBY", "TER", "CFG", "TSN", "SJM",
-    "CPT", "CMS", "WRB", "ZBRA", "LKQ", "AVY", "KMX", "PEAK", "DGX", "BXP",
-    "EPAM", "TXT", "APA", "SNA", "POOL", "ALLE", "PTC", "TECH", "IRM", "VTRS",
-    "MGM", "CE", "L", "RE", "TPR", "CTLT", "JKHY", "HST", "PAYC", "BEN",
-    "WRK", "CHRW", "CBOE", "CF", "BF.B", "EVRG", "SEDG", "CDAY", "QRVO", "IPG",
-    "NWS", "NWSA", "LNT", "KIM", "REG", "UDR", "CZR", "PNR", "MAS", "BWA",
-    "FOXA", "FOX", "EMN", "TAP", "AAL", "WHR", "RHI", "HAS", "SEE", "HII",
-    "AAP", "FRT", "WYNN", "BIO", "NCLH", "NWL", "AIZ", "FFIV", "MHK", "LUMN",
-    "PNW", "BBWI", "PARA", "DXC", "IVZ", "DISH", "VFC", "GNRC", "CMA", "ZION",
-    "FMC", "DVA", "ALK", "RCL", "CCL", "RL", "MTCH", "XRAY", "LW", "CPB"
+    "AAPL",
+    "MSFT",
+    "AMZN",
+    "NVDA",
+    "GOOGL",
+    "GOOG",
+    "META",
+    "BRK.B",
+    "UNH",
+    "XOM",
+    "LLY",
+    "JPM",
+    "JNJ",
+    "V",
+    "PG",
+    "MA",
+    "AVGO",
+    "HD",
+    "CVX",
+    "MRK",
+    "ABBV",
+    "COST",
+    "PEP",
+    "KO",
+    "ADBE",
+    "WMT",
+    "MCD",
+    "CSCO",
+    "CRM",
+    "BAC",
+    "PFE",
+    "TMO",
+    "ACN",
+    "NFLX",
+    "AMD",
+    "ABT",
+    "LIN",
+    "DIS",
+    "ORCL",
+    "CMCSA",
+    "DHR",
+    "NKE",
+    "VZ",
+    "INTC",
+    "WFC",
+    "PM",
+    "TXN",
+    "UNP",
+    "COP",
+    "QCOM",
+    "INTU",
+    "RTX",
+    "BMY",
+    "UPS",
+    "LOW",
+    "SPGI",
+    "CAT",
+    "HON",
+    "NEE",
+    "ELV",
+    "BA",
+    "GE",
+    "PLD",
+    "AMAT",
+    "IBM",
+    "DE",
+    "AMGN",
+    "T",
+    "MS",
+    "AXP",
+    "MDT",
+    "GS",
+    "BLK",
+    "ISRG",
+    "SYK",
+    "ADI",
+    "GILD",
+    "BKNG",
+    "ADP",
+    "VRTX",
+    "LMT",
+    "SBUX",
+    "MDLZ",
+    "MMC",
+    "TJX",
+    "REGN",
+    "ETN",
+    "CB",
+    "CI",
+    "MO",
+    "LRCX",
+    "PGR",
+    "ZTS",
+    "C",
+    "SCHW",
+    "PANW",
+    "NOW",
+    "BSX",
+    "CME",
+    "SNPS",
+    "CVS",
+    "EOG",
+    "FI",
+    "SO",
+    "TMUS",
+    "SLB",
+    "BDX",
+    "DUK",
+    "MU",
+    "ITW",
+    "NOC",
+    "CDNS",
+    "KLAC",
+    "APD",
+    "AON",
+    "SHW",
+    "ICE",
+    "WM",
+    "HUM",
+    "FCX",
+    "CL",
+    "PYPL",
+    "MCK",
+    "CMG",
+    "PNC",
+    "EQIX",
+    "TGT",
+    "ORLY",
+    "EMR",
+    "USB",
+    "MMM",
+    "NSC",
+    "ROP",
+    "MSI",
+    "GD",
+    "PSX",
+    "MPC",
+    "MAR",
+    "TDG",
+    "EL",
+    "APH",
+    "AIG",
+    "PXD",
+    "ECL",
+    "NXPI",
+    "AZO",
+    "ADSK",
+    "AFL",
+    "HES",
+    "OXY",
+    "TT",
+    "CSX",
+    "MCHP",
+    "SRE",
+    "FTNT",
+    "GM",
+    "PCAR",
+    "VLO",
+    "AEP",
+    "F",
+    "CCI",
+    "PSA",
+    "CARR",
+    "DXCM",
+    "TEL",
+    "KMB",
+    "CTAS",
+    "NUE",
+    "D",
+    "HLT",
+    "JCI",
+    "WELL",
+    "DVN",
+    "MRNA",
+    "MET",
+    "AJG",
+    "MNST",
+    "O",
+    "MSCI",
+    "IQV",
+    "KDP",
+    "GWW",
+    "ANET",
+    "STZ",
+    "DOW",
+    "AMP",
+    "PRU",
+    "ALL",
+    "KHC",
+    "SPG",
+    "BK",
+    "GIS",
+    "EXC",
+    "BIIB",
+    "FDX",
+    "CMI",
+    "A",
+    "SYY",
+    "PAYX",
+    "YUM",
+    "CTVA",
+    "IDXX",
+    "PCG",
+    "OTIS",
+    "ED",
+    "DG",
+    "FAST",
+    "ROST",
+    "VRSK",
+    "DHI",
+    "ON",
+    "AME",
+    "HAL",
+    "APTV",
+    "RMD",
+    "DLR",
+    "EW",
+    "CEG",
+    "WEC",
+    "PPG",
+    "CBRE",
+    "ODFL",
+    "WMB",
+    "EA",
+    "CPRT",
+    "ROK",
+    "GEHC",
+    "EXR",
+    "DD",
+    "MTD",
+    "XEL",
+    "KR",
+    "ALB",
+    "WST",
+    "OKE",
+    "ACGL",
+    "HIG",
+    "KEYS",
+    "AWK",
+    "BKR",
+    "GLW",
+    "LHX",
+    "IR",
+    "DLTR",
+    "IT",
+    "CDW",
+    "ZBH",
+    "ANSS",
+    "HPQ",
+    "VICI",
+    "HSY",
+    "CAH",
+    "LEN",
+    "WBD",
+    "AVB",
+    "PEG",
+    "GPN",
+    "ILMN",
+    "URI",
+    "STT",
+    "VMC",
+    "TSCO",
+    "MLM",
+    "EBAY",
+    "RJF",
+    "IFF",
+    "ES",
+    "NVR",
+    "EIX",
+    "FTV",
+    "CHD",
+    "WAB",
+    "DFS",
+    "DOV",
+    "ULTA",
+    "PWR",
+    "GRMN",
+    "MPWR",
+    "HWM",
+    "ADM",
+    "FRC",
+    "TRV",
+    "XYL",
+    "EFX",
+    "TROW",
+    "BR",
+    "BAX",
+    "COO",
+    "ALGN",
+    "EQR",
+    "WTW",
+    "AEE",
+    "FITB",
+    "MOH",
+    "LUV",
+    "PPL",
+    "FANG",
+    "DAL",
+    "MTB",
+    "NTRS",
+    "ARE",
+    "CTRA",
+    "INVH",
+    "GPC",
+    "HPE",
+    "TTWO",
+    "SBAC",
+    "WY",
+    "K",
+    "CINF",
+    "WAT",
+    "BRO",
+    "MKC",
+    "HUBB",
+    "TYL",
+    "LYB",
+    "STE",
+    "TRGP",
+    "CNC",
+    "DRI",
+    "CLX",
+    "TDY",
+    "RF",
+    "FE",
+    "HOLX",
+    "EXPE",
+    "VTR",
+    "HRL",
+    "MAA",
+    "IP",
+    "BALL",
+    "NTAP",
+    "PKI",
+    "AES",
+    "ESS",
+    "DTE",
+    "ATO",
+    "SWKS",
+    "IEX",
+    "CNP",
+    "J",
+    "EXPD",
+    "ETR",
+    "NDAQ",
+    "OMC",
+    "MRO",
+    "NI",
+    "COF",
+    "CAG",
+    "HBAN",
+    "JBHT",
+    "NRG",
+    "KEY",
+    "AMCR",
+    "AKAM",
+    "BBY",
+    "TER",
+    "CFG",
+    "TSN",
+    "SJM",
+    "CPT",
+    "CMS",
+    "WRB",
+    "ZBRA",
+    "LKQ",
+    "AVY",
+    "KMX",
+    "PEAK",
+    "DGX",
+    "BXP",
+    "EPAM",
+    "TXT",
+    "APA",
+    "SNA",
+    "POOL",
+    "ALLE",
+    "PTC",
+    "TECH",
+    "IRM",
+    "VTRS",
+    "MGM",
+    "CE",
+    "L",
+    "RE",
+    "TPR",
+    "CTLT",
+    "JKHY",
+    "HST",
+    "PAYC",
+    "BEN",
+    "WRK",
+    "CHRW",
+    "CBOE",
+    "CF",
+    "BF.B",
+    "EVRG",
+    "SEDG",
+    "CDAY",
+    "QRVO",
+    "IPG",
+    "NWS",
+    "NWSA",
+    "LNT",
+    "KIM",
+    "REG",
+    "UDR",
+    "CZR",
+    "PNR",
+    "MAS",
+    "BWA",
+    "FOXA",
+    "FOX",
+    "EMN",
+    "TAP",
+    "AAL",
+    "WHR",
+    "RHI",
+    "HAS",
+    "SEE",
+    "HII",
+    "AAP",
+    "FRT",
+    "WYNN",
+    "BIO",
+    "NCLH",
+    "NWL",
+    "AIZ",
+    "FFIV",
+    "MHK",
+    "LUMN",
+    "PNW",
+    "BBWI",
+    "PARA",
+    "DXC",
+    "IVZ",
+    "DISH",
+    "VFC",
+    "GNRC",
+    "CMA",
+    "ZION",
+    "FMC",
+    "DVA",
+    "ALK",
+    "RCL",
+    "CCL",
+    "RL",
+    "MTCH",
+    "XRAY",
+    "LW",
+    "CPB",
 ]
 
 # Russell 1000 additional tickers (excluding S&P 500 overlap)
 RUSSELL_1000_ADDITIONAL = [
-    "SPOT", "SQ", "COIN", "HOOD", "PLTR", "RBLX", "U", "DDOG", "ZS", "CRWD",
-    "SNOW", "NET", "MDB", "TEAM", "OKTA", "ZI", "DOCN", "CFLT", "PATH", "APP",
-    "GTLB", "TWLO", "HUBS", "VEEV", "WDAY", "DOCU", "ZM", "BILL", "COUP", "DOMO",
-    "DUOL", "UBER", "LYFT", "ABNB", "DASH", "BROS", "RIVN", "LCID", "FSR", "POLESTAR",
-    "SOFI", "UPST", "AFRM", "LMND", "ROOT", "OPEN", "OPENDOOR", "RDFN", "Z", "ZG",
-    "CVNA", "VROOM", "CARG", "CARS", "SAH", "AN", "LAD", "PAG", "GPI", "ABG",
-    "W", "ETSY", "CHWY", "BABA", "JD", "PDD", "BIDU", "NIO", "XPEV", "LI",
-    "SE", "GRAB", "MELI", "NU", "STNE", "PAGS", "XP", "VTEX", "GLBE", "MNDY",
-    "TTD", "PUBM", "MGNI", "IS", "DV", "IAS", "APPS", "DT", "S", "ESTC",
-    "FROG", "SUMO", "NEWR", "SPLK", "SMAR", "BOX", "DBX", "FIVN", "RNG", "BAND",
-    "LOGI", "HEAR", "SONO", "GPRO", "IRBT", "VUZI", "IMMR", "HIMX", "CREE", "WOLF",
-    "ENPH", "SEDG", "RUN", "NOVA", "SPWR", "FSLR", "ARRY", "MAXN", "JKS", "CSIQ",
-    "PLUG", "BLDP", "BE", "FCEL", "BLOOM", "CHPT", "EVGO", "BLNK", "VLTA", "SBE",
-    "QS", "SLDP", "MVST", "DCRC", "PTRA", "LEV", "XL", "HYLN", "GOEV", "NKLA",
-    "LCID", "TSLA", "GM", "F", "TM", "HMC", "STLA", "VWAGY", "BMWYY", "MBGYY",
-    "ARKK", "ARKG", "ARKW", "ARKF", "ARKQ", "ARKX", "PRNT", "IZRL", "CTRU", "ACES",
-    "ICLN", "TAN", "QCLN", "FAN", "PBW", "LIT", "REMX", "KRBN", "CNRG", "RNRG",
-    "WCLD", "SKYY", "CLOU", "HACK", "BUG", "CIBR", "BOTZ", "ROBO", "IRBO", "ARKQ",
-    "IBB", "XBI", "ARKG", "GNOM", "LABU", "LABD", "CURE", "PILL", "GDXJ", "NUGT",
-    "JNUG", "DUST", "JDST", "GDX", "SIL", "SLV", "GLD", "IAU", "SGOL", "PHYS"
+    "SPOT",
+    "SQ",
+    "COIN",
+    "HOOD",
+    "PLTR",
+    "RBLX",
+    "U",
+    "DDOG",
+    "ZS",
+    "CRWD",
+    "SNOW",
+    "NET",
+    "MDB",
+    "TEAM",
+    "OKTA",
+    "ZI",
+    "DOCN",
+    "CFLT",
+    "PATH",
+    "APP",
+    "GTLB",
+    "TWLO",
+    "HUBS",
+    "VEEV",
+    "WDAY",
+    "DOCU",
+    "ZM",
+    "BILL",
+    "COUP",
+    "DOMO",
+    "DUOL",
+    "UBER",
+    "LYFT",
+    "ABNB",
+    "DASH",
+    "BROS",
+    "RIVN",
+    "LCID",
+    "FSR",
+    "POLESTAR",
+    "SOFI",
+    "UPST",
+    "AFRM",
+    "LMND",
+    "ROOT",
+    "OPEN",
+    "OPENDOOR",
+    "RDFN",
+    "Z",
+    "ZG",
+    "CVNA",
+    "VROOM",
+    "CARG",
+    "CARS",
+    "SAH",
+    "AN",
+    "LAD",
+    "PAG",
+    "GPI",
+    "ABG",
+    "W",
+    "ETSY",
+    "CHWY",
+    "BABA",
+    "JD",
+    "PDD",
+    "BIDU",
+    "NIO",
+    "XPEV",
+    "LI",
+    "SE",
+    "GRAB",
+    "MELI",
+    "NU",
+    "STNE",
+    "PAGS",
+    "XP",
+    "VTEX",
+    "GLBE",
+    "MNDY",
+    "TTD",
+    "PUBM",
+    "MGNI",
+    "IS",
+    "DV",
+    "IAS",
+    "APPS",
+    "DT",
+    "S",
+    "ESTC",
+    "FROG",
+    "SUMO",
+    "NEWR",
+    "SPLK",
+    "SMAR",
+    "BOX",
+    "DBX",
+    "FIVN",
+    "RNG",
+    "BAND",
+    "LOGI",
+    "HEAR",
+    "SONO",
+    "GPRO",
+    "IRBT",
+    "VUZI",
+    "IMMR",
+    "HIMX",
+    "CREE",
+    "WOLF",
+    "ENPH",
+    "SEDG",
+    "RUN",
+    "NOVA",
+    "SPWR",
+    "FSLR",
+    "ARRY",
+    "MAXN",
+    "JKS",
+    "CSIQ",
+    "PLUG",
+    "BLDP",
+    "BE",
+    "FCEL",
+    "BLOOM",
+    "CHPT",
+    "EVGO",
+    "BLNK",
+    "VLTA",
+    "SBE",
+    "QS",
+    "SLDP",
+    "MVST",
+    "DCRC",
+    "PTRA",
+    "LEV",
+    "XL",
+    "HYLN",
+    "GOEV",
+    "NKLA",
+    "LCID",
+    "TSLA",
+    "GM",
+    "F",
+    "TM",
+    "HMC",
+    "STLA",
+    "VWAGY",
+    "BMWYY",
+    "MBGYY",
+    "ARKK",
+    "ARKG",
+    "ARKW",
+    "ARKF",
+    "ARKQ",
+    "ARKX",
+    "PRNT",
+    "IZRL",
+    "CTRU",
+    "ACES",
+    "ICLN",
+    "TAN",
+    "QCLN",
+    "FAN",
+    "PBW",
+    "LIT",
+    "REMX",
+    "KRBN",
+    "CNRG",
+    "RNRG",
+    "WCLD",
+    "SKYY",
+    "CLOU",
+    "HACK",
+    "BUG",
+    "CIBR",
+    "BOTZ",
+    "ROBO",
+    "IRBO",
+    "ARKQ",
+    "IBB",
+    "XBI",
+    "ARKG",
+    "GNOM",
+    "LABU",
+    "LABD",
+    "CURE",
+    "PILL",
+    "GDXJ",
+    "NUGT",
+    "JNUG",
+    "DUST",
+    "JDST",
+    "GDX",
+    "SIL",
+    "SLV",
+    "GLD",
+    "IAU",
+    "SGOL",
+    "PHYS",
 ]
+
 
 # Combined unique tickers
 def get_stock_universe() -> list[str]:
@@ -107,6 +692,7 @@ def get_stock_universe() -> list[str]:
 # =============================================================================
 # Rate Limiting
 # =============================================================================
+
 
 class RateLimiter:
     """Simple rate limiter for API calls."""
@@ -132,10 +718,11 @@ rate_limiter = RateLimiter(calls_per_second=2.0)
 # Data Fetching
 # =============================================================================
 
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True
+    reraise=True,
 )
 def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
     """
@@ -162,18 +749,30 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         info = stock.info
 
         # Calculate current price
-        current_price = hist['Close'].iloc[-1] if len(hist) > 0 else None
+        current_price = hist["Close"].iloc[-1] if len(hist) > 0 else None
 
         # Calculate moving averages
-        ma_30 = hist['Close'].rolling(window=30).mean().iloc[-1] if len(hist) >= 30 else None
-        ma_100 = hist['Close'].rolling(window=100).mean().iloc[-1] if len(hist) >= 100 else None
-        ma_200 = hist['Close'].rolling(window=200).mean().iloc[-1] if len(hist) >= 200 else None
+        ma_30 = (
+            hist["Close"].rolling(window=30).mean().iloc[-1]
+            if len(hist) >= 30
+            else None
+        )
+        ma_100 = (
+            hist["Close"].rolling(window=100).mean().iloc[-1]
+            if len(hist) >= 100
+            else None
+        )
+        ma_200 = (
+            hist["Close"].rolling(window=200).mean().iloc[-1]
+            if len(hist) >= 200
+            else None
+        )
 
         # Calculate ATR (14-day Average True Range) for position sizing
         if len(hist) >= 14:
-            high = hist['High']
-            low = hist['Low']
-            close = hist['Close'].shift(1)
+            high = hist["High"]
+            low = hist["Low"]
+            close = hist["Close"].shift(1)
 
             tr1 = high - low
             tr2 = abs(high - close)
@@ -186,28 +785,36 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
 
         # Calculate price changes
         if len(hist) >= 2:
-            prev_close = hist['Close'].iloc[-2]
+            prev_close = hist["Close"].iloc[-2]
             change_1d = ((current_price - prev_close) / prev_close) * 100
         else:
             change_1d = 0.0
 
         # Calculate 52-week metrics
-        high_52w = hist['High'].max() if len(hist) >= 252 else hist['High'].max()
-        low_52w = hist['Low'].min() if len(hist) >= 252 else hist['Low'].min()
+        high_52w = hist["High"].max() if len(hist) >= 252 else hist["High"].max()
+        low_52w = hist["Low"].min() if len(hist) >= 252 else hist["Low"].min()
 
         # Calculate volume metrics
-        avg_volume = hist['Volume'].mean() if len(hist) > 0 else None
-        volume_today = hist['Volume'].iloc[-1] if len(hist) > 0 else None
+        avg_volume = hist["Volume"].mean() if len(hist) > 0 else None
+        volume_today = hist["Volume"].iloc[-1] if len(hist) > 0 else None
 
         # Calculate momentum metrics
         momentum_6m = None
         momentum_12m = None
         if len(hist) >= 126:
-            price_6m_ago = hist['Close'].iloc[-126]
-            momentum_6m = ((current_price - price_6m_ago) / price_6m_ago) if price_6m_ago > 0 else None
+            price_6m_ago = hist["Close"].iloc[-126]
+            momentum_6m = (
+                ((current_price - price_6m_ago) / price_6m_ago)
+                if price_6m_ago > 0
+                else None
+            )
         if len(hist) >= 252:
-            price_12m_ago = hist['Close'].iloc[-252]
-            momentum_12m = ((current_price - price_12m_ago) / price_12m_ago) if price_12m_ago > 0 else None
+            price_12m_ago = hist["Close"].iloc[-252]
+            momentum_12m = (
+                ((current_price - price_12m_ago) / price_12m_ago)
+                if price_12m_ago > 0
+                else None
+            )
 
         # Extract quality metrics
         roe = info.get("returnOnEquity")  # As decimal (0.15 = 15%)
@@ -242,13 +849,33 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
             "volume": int(volume_today) if volume_today else None,
             # Quality metrics for factor scoring
             "roe": round(roe, 4) if roe and not pd.isna(roe) else None,
-            "profit_margin": round(profit_margin, 4) if profit_margin and not pd.isna(profit_margin) else None,
-            "debt_to_equity": round(debt_to_equity, 4) if debt_to_equity and not pd.isna(debt_to_equity) else None,
+            "profit_margin": (
+                round(profit_margin, 4)
+                if profit_margin and not pd.isna(profit_margin)
+                else None
+            ),
+            "debt_to_equity": (
+                round(debt_to_equity, 4)
+                if debt_to_equity and not pd.isna(debt_to_equity)
+                else None
+            ),
             # Momentum metrics
-            "momentum_6m": round(momentum_6m, 4) if momentum_6m and not pd.isna(momentum_6m) else None,
-            "momentum_12m": round(momentum_12m, 4) if momentum_12m and not pd.isna(momentum_12m) else None,
+            "momentum_6m": (
+                round(momentum_6m, 4)
+                if momentum_6m and not pd.isna(momentum_6m)
+                else None
+            ),
+            "momentum_12m": (
+                round(momentum_12m, 4)
+                if momentum_12m and not pd.isna(momentum_12m)
+                else None
+            ),
             # Dividend growth
-            "dividend_growth_5y": round(dividend_growth_5y, 4) if dividend_growth_5y and not pd.isna(dividend_growth_5y) else None,
+            "dividend_growth_5y": (
+                round(dividend_growth_5y, 4)
+                if dividend_growth_5y and not pd.isna(dividend_growth_5y)
+                else None
+            ),
             "updated_at": datetime.utcnow().isoformat(),
         }
 
@@ -257,7 +884,9 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         return None
 
 
-async def fetch_stock_data_async(ticker: str, period: str = "1y") -> dict[str, Any] | None:
+async def fetch_stock_data_async(
+    ticker: str, period: str = "1y"
+) -> dict[str, Any] | None:
     """Async wrapper for fetch_stock_data with rate limiting."""
     await rate_limiter.acquire()
     return await asyncio.to_thread(fetch_stock_data, ticker, period)
@@ -267,10 +896,9 @@ async def fetch_stock_data_async(ticker: str, period: str = "1y") -> dict[str, A
 # Batch Processing
 # =============================================================================
 
+
 async def process_stock_batch(
-    tickers: list[str],
-    batch_size: int = 50,
-    progress_callback: callable = None
+    tickers: list[str], batch_size: int = 50, progress_callback: callable = None
 ) -> tuple[list[dict], list[str]]:
     """
     Process a batch of stocks with rate limiting.
@@ -288,7 +916,7 @@ async def process_stock_batch(
     total = len(tickers)
 
     for i in range(0, total, batch_size):
-        batch = tickers[i:i + batch_size]
+        batch = tickers[i : i + batch_size]
 
         # Process batch with limited concurrency
         tasks = [fetch_stock_data_async(ticker) for ticker in batch]
@@ -308,7 +936,9 @@ async def process_stock_batch(
         if progress_callback:
             progress_callback(processed, total, len(results), len(failed))
 
-        logger.info(f"Processed {processed}/{total} stocks ({len(results)} success, {len(failed)} failed)")
+        logger.info(
+            f"Processed {processed}/{total} stocks ({len(results)} success, {len(failed)} failed)"
+        )
 
         # Small delay between batches to be nice to the API
         if i + batch_size < total:
@@ -320,6 +950,7 @@ async def process_stock_batch(
 # =============================================================================
 # Data Validation
 # =============================================================================
+
 
 def validate_stock_data(data: dict) -> tuple[bool, list[str]]:
     """
@@ -349,8 +980,6 @@ def validate_stock_data(data: dict) -> tuple[bool, list[str]]:
 
     # Moving average validation
     ma_30 = data.get("ma_30")
-    ma_100 = data.get("ma_100")
-    ma_200 = data.get("ma_200")
 
     if price and ma_30:
         if abs((price - ma_30) / ma_30) > 1.0:  # More than 100% deviation
@@ -376,6 +1005,7 @@ def validate_stock_data(data: dict) -> tuple[bool, list[str]]:
 # Database Operations
 # =============================================================================
 
+
 async def upsert_stock_data(data: dict) -> bool:
     """
     Insert or update stock data in Supabase.
@@ -394,10 +1024,7 @@ async def upsert_stock_data(data: dict) -> bool:
             # Still insert but log the issues
 
         # Upsert to database
-        result = supabase.table("stocks").upsert(
-            data,
-            on_conflict="symbol"
-        ).execute()
+        supabase.table("stocks").upsert(data, on_conflict="symbol").execute()
 
         return True
 
@@ -423,7 +1050,7 @@ async def upsert_stock_batch(stocks: list[dict]) -> tuple[int, int]:
     batch_size = 100
 
     for i in range(0, len(stocks), batch_size):
-        batch = stocks[i:i + batch_size]
+        batch = stocks[i : i + batch_size]
 
         try:
             # Validate batch
@@ -437,9 +1064,8 @@ async def upsert_stock_batch(stocks: list[dict]) -> tuple[int, int]:
                     failures += 1
 
             if valid_batch:
-                result = supabase.table("stocks").upsert(
-                    valid_batch,
-                    on_conflict="symbol"
+                supabase.table("stocks").upsert(
+                    valid_batch, on_conflict="symbol"
                 ).execute()
                 success += len(valid_batch)
 
@@ -460,12 +1086,11 @@ async def store_price_history(ticker: str, price: float, date: datetime = None) 
             "symbol": ticker,
             "price": price,
             "date": date.date().isoformat(),
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat(),
         }
 
         supabase.table("price_history").upsert(
-            data,
-            on_conflict="symbol,date"
+            data, on_conflict="symbol,date"
         ).execute()
 
         return True
@@ -479,9 +1104,9 @@ async def store_price_history(ticker: str, price: float, date: datetime = None) 
 # Full Update Job
 # =============================================================================
 
+
 async def run_market_data_update(
-    tickers: list[str] = None,
-    batch_size: int = 50
+    tickers: list[str] = None, batch_size: int = 50
 ) -> dict:
     """
     Run full market data update job.
@@ -547,10 +1172,17 @@ async def run_market_data_update(
 # Query Functions
 # =============================================================================
 
+
 async def get_stock_by_symbol(symbol: str) -> dict | None:
     """Get a single stock by symbol."""
     try:
-        result = supabase.table("stocks").select("*").eq("symbol", symbol.upper()).single().execute()
+        result = (
+            supabase.table("stocks")
+            .select("*")
+            .eq("symbol", symbol.upper())
+            .single()
+            .execute()
+        )
         return result.data
     except Exception as e:
         logger.error(f"Error fetching stock {symbol}: {str(e)}")
@@ -563,7 +1195,7 @@ async def get_stocks_paginated(
     sector: str = None,
     min_market_cap: float = None,
     sort_by: str = "symbol",
-    sort_order: str = "asc"
+    sort_order: str = "asc",
 ) -> tuple[list[dict], int]:
     """
     Get paginated list of stocks with filters.
@@ -621,12 +1253,17 @@ async def get_stocks_above_ma(ma_period: int = 200) -> list[dict]:
     """Get stocks trading above their moving average."""
     try:
         ma_field = f"ma_{ma_period}"
-        result = supabase.table("stocks").select("*").not_.is_(ma_field, "null").execute()
+        result = (
+            supabase.table("stocks").select("*").not_.is_(ma_field, "null").execute()
+        )
 
         # Filter where price > MA
         above_ma = [
-            stock for stock in result.data
-            if stock.get("price") and stock.get(ma_field) and stock["price"] > stock[ma_field]
+            stock
+            for stock in result.data
+            if stock.get("price")
+            and stock.get(ma_field)
+            and stock["price"] > stock[ma_field]
         ]
 
         return above_ma

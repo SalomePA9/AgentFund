@@ -9,17 +9,10 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from data.alpaca_stream import (
-    AlpacaStreamClient,
-    get_price_cache,
-    get_stream_client,
-    init_stream_client,
-)
+from data.alpaca_stream import get_price_cache, get_stream_client, init_stream_client
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +22,7 @@ router = APIRouter()
 # =============================================================================
 # Connection Manager
 # =============================================================================
+
 
 class ConnectionManager:
     """
@@ -160,6 +154,7 @@ manager = ConnectionManager()
 # Alpaca Stream Integration
 # =============================================================================
 
+
 async def on_quote_update(quote: dict):
     """Handle quote update from Alpaca stream."""
     symbol = quote.get("symbol")
@@ -169,7 +164,7 @@ async def on_quote_update(quote: dict):
             "type": "quote",
             "symbol": symbol,
             "data": quote,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
         await manager.broadcast_to_symbol(symbol, message)
 
@@ -183,7 +178,7 @@ async def on_trade_update(trade: dict):
             "type": "trade",
             "symbol": symbol,
             "data": trade,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
         await manager.broadcast_to_symbol(symbol, message)
 
@@ -206,6 +201,7 @@ async def setup_alpaca_stream():
 # =============================================================================
 # WebSocket Endpoint
 # =============================================================================
+
 
 @router.websocket("/ws/market")
 async def market_websocket(websocket: WebSocket):
@@ -233,11 +229,13 @@ async def market_websocket(websocket: WebSocket):
 
     try:
         # Send welcome message
-        await websocket.send_json({
-            "type": "connected",
-            "connection_id": connection_id,
-            "timestamp": datetime.utcnow().isoformat()
-        })
+        await websocket.send_json(
+            {
+                "type": "connected",
+                "connection_id": connection_id,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        )
 
         while True:
             # Receive message from client
@@ -257,61 +255,58 @@ async def market_websocket(websocket: WebSocket):
                         if stream_client:
                             await stream_client.subscribe(symbols)
 
-                        await websocket.send_json({
-                            "type": "subscribed",
-                            "symbols": symbols
-                        })
+                        await websocket.send_json(
+                            {"type": "subscribed", "symbols": symbols}
+                        )
 
                 elif action == "unsubscribe":
                     symbols = message.get("symbols", [])
                     if symbols:
                         await manager.unsubscribe(connection_id, symbols)
-                        await websocket.send_json({
-                            "type": "unsubscribed",
-                            "symbols": symbols
-                        })
+                        await websocket.send_json(
+                            {"type": "unsubscribed", "symbols": symbols}
+                        )
 
                 elif action == "get_price":
                     symbol = message.get("symbol", "").upper()
                     price_cache = get_price_cache()
                     price = await price_cache.get_price(symbol)
 
-                    await websocket.send_json({
-                        "type": "price",
-                        "symbol": symbol,
-                        "price": price,
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "price",
+                            "symbol": symbol,
+                            "price": price,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }
+                    )
 
                 elif action == "get_snapshot":
                     symbol = message.get("symbol", "").upper()
                     price_cache = get_price_cache()
                     snapshot = await price_cache.get_snapshot(symbol)
 
-                    await websocket.send_json({
-                        "type": "snapshot",
-                        "symbol": symbol,
-                        "data": snapshot,
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "snapshot",
+                            "symbol": symbol,
+                            "data": snapshot,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }
+                    )
 
                 elif action == "ping":
-                    await websocket.send_json({
-                        "type": "pong",
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+                    await websocket.send_json(
+                        {"type": "pong", "timestamp": datetime.utcnow().isoformat()}
+                    )
 
                 else:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": f"Unknown action: {action}"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "message": f"Unknown action: {action}"}
+                    )
 
             except json.JSONDecodeError:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Invalid JSON"
-                })
+                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
 
     except WebSocketDisconnect:
         logger.info(f"Client {connection_id} disconnected")
@@ -330,7 +325,11 @@ async def websocket_status():
     return {
         "connected_clients": manager.get_connection_count(),
         "subscribed_symbols": list(manager.get_all_subscribed_symbols()),
-        "alpaca_stream_connected": stream_client is not None and stream_client._running if stream_client else False,
+        "alpaca_stream_connected": (
+            stream_client is not None and stream_client._running
+            if stream_client
+            else False
+        ),
         "cached_prices": len(await price_cache.get_all_prices()),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
     }

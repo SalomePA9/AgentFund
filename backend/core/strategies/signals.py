@@ -5,17 +5,16 @@ Modular signal generators that can be composed into strategies.
 Each generator produces normalized signals (-100 to +100) for ranking and combining.
 """
 
-from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
 
 from core.strategies.base import Signal, SignalGenerator, SignalType
 
-
 # =============================================================================
 # Price Momentum Signals
 # =============================================================================
+
 
 class TimeSeriesMomentumSignal(SignalGenerator):
     """
@@ -24,10 +23,7 @@ class TimeSeriesMomentumSignal(SignalGenerator):
     """
 
     def __init__(
-        self,
-        lookback_days: int = 252,
-        short_window: int = 20,
-        long_window: int = 60
+        self, lookback_days: int = 252, short_window: int = 20, long_window: int = 60
     ):
         self.lookback_days = lookback_days
         self.short_window = short_window
@@ -38,10 +34,7 @@ class TimeSeriesMomentumSignal(SignalGenerator):
         return SignalType.PRICE_MOMENTUM
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         signals = []
 
@@ -54,12 +47,16 @@ class TimeSeriesMomentumSignal(SignalGenerator):
                 continue
 
             # Calculate momentum metrics
-            returns_short = (current_price - prices[-self.short_window]) / prices[-self.short_window]
-            returns_long = (current_price - prices[-self.long_window]) / prices[-self.long_window]
+            returns_short = (current_price - prices[-self.short_window]) / prices[
+                -self.short_window
+            ]
+            returns_long = (current_price - prices[-self.long_window]) / prices[
+                -self.long_window
+            ]
 
             # Check if price is above moving averages
-            ma_short = np.mean(prices[-self.short_window:])
-            ma_long = np.mean(prices[-self.long_window:])
+            ma_short = np.mean(prices[-self.short_window :])
+            ma_long = np.mean(prices[-self.long_window :])
 
             # Trend strength: +1 if above both MAs, -1 if below both
             trend_score = 0
@@ -77,20 +74,22 @@ class TimeSeriesMomentumSignal(SignalGenerator):
             momentum_score = (returns_short * 0.4 + returns_long * 0.6) * 100
             signal_value = momentum_score + (trend_score * 10)
 
-            signals.append(Signal(
-                symbol=symbol,
-                signal_type=self.signal_type,
-                value=max(-100, min(100, signal_value)),
-                raw_value=returns_long,
-                confidence=abs(trend_score) / 2,  # Higher confidence when MAs agree
-                metadata={
-                    "returns_short": returns_short,
-                    "returns_long": returns_long,
-                    "trend_score": trend_score,
-                    "ma_short": ma_short,
-                    "ma_long": ma_long,
-                }
-            ))
+            signals.append(
+                Signal(
+                    symbol=symbol,
+                    signal_type=self.signal_type,
+                    value=max(-100, min(100, signal_value)),
+                    raw_value=returns_long,
+                    confidence=abs(trend_score) / 2,  # Higher confidence when MAs agree
+                    metadata={
+                        "returns_short": returns_short,
+                        "returns_long": returns_long,
+                        "trend_score": trend_score,
+                        "ma_short": ma_short,
+                        "ma_long": ma_long,
+                    },
+                )
+            )
 
         return signals
 
@@ -109,10 +108,7 @@ class CrossSectionalMomentumSignal(SignalGenerator):
         return SignalType.CROSS_SECTIONAL_MOMENTUM
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         # Calculate returns for all symbols
         returns = {}
@@ -138,17 +134,19 @@ class CrossSectionalMomentumSignal(SignalGenerator):
             # Convert rank to signal (-100 for worst, +100 for best)
             percentile = (i / (n - 1)) * 200 - 100 if n > 1 else 0
 
-            signals.append(Signal(
-                symbol=symbol,
-                signal_type=self.signal_type,
-                value=percentile,
-                raw_value=returns[symbol],
-                metadata={
-                    "rank": i + 1,
-                    "total": n,
-                    "return": returns[symbol],
-                }
-            ))
+            signals.append(
+                Signal(
+                    symbol=symbol,
+                    signal_type=self.signal_type,
+                    value=percentile,
+                    raw_value=returns[symbol],
+                    metadata={
+                        "rank": i + 1,
+                        "total": n,
+                        "return": returns[symbol],
+                    },
+                )
+            )
 
         return signals
 
@@ -157,6 +155,7 @@ class CrossSectionalMomentumSignal(SignalGenerator):
 # Value Signals
 # =============================================================================
 
+
 class ValueSignal(SignalGenerator):
     """
     Value factor signal.
@@ -164,10 +163,7 @@ class ValueSignal(SignalGenerator):
     """
 
     def __init__(
-        self,
-        pe_weight: float = 0.4,
-        pb_weight: float = 0.3,
-        ey_weight: float = 0.3
+        self, pe_weight: float = 0.4, pb_weight: float = 0.3, ey_weight: float = 0.3
     ):
         self.pe_weight = pe_weight
         self.pb_weight = pb_weight
@@ -178,10 +174,7 @@ class ValueSignal(SignalGenerator):
         return SignalType.VALUE
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         # Collect metrics for ranking
         metrics = {}
@@ -189,8 +182,6 @@ class ValueSignal(SignalGenerator):
             data = market_data.get(symbol, {})
             pe = data.get("pe_ratio")
             pb = data.get("pb_ratio")
-            eps = data.get("eps")
-            price = data.get("price")
 
             # Calculate earnings yield (inverse P/E)
             ey = (1 / pe) if pe and pe > 0 else None
@@ -206,8 +197,12 @@ class ValueSignal(SignalGenerator):
             return []
 
         # Rank each metric (lower P/E and P/B = better, higher EY = better)
-        pe_values = [m["pe"] for m in metrics.values() if m["pe"] is not None and m["pe"] > 0]
-        pb_values = [m["pb"] for m in metrics.values() if m["pb"] is not None and m["pb"] > 0]
+        pe_values = [
+            m["pe"] for m in metrics.values() if m["pe"] is not None and m["pe"] > 0
+        ]
+        pb_values = [
+            m["pb"] for m in metrics.values() if m["pb"] is not None and m["pb"] > 0
+        ]
         ey_values = [m["ey"] for m in metrics.values() if m["ey"] is not None]
 
         signals = []
@@ -234,22 +229,28 @@ class ValueSignal(SignalGenerator):
             if scores:
                 # Weighted average
                 total_weight = sum(w for _, w in scores)
-                combined = sum(s * w for s, w in scores) / total_weight if total_weight > 0 else 50
+                combined = (
+                    sum(s * w for s, w in scores) / total_weight
+                    if total_weight > 0
+                    else 50
+                )
 
                 # Convert to -100 to 100 range
                 signal_value = (combined - 50) * 2
 
-                signals.append(Signal(
-                    symbol=symbol,
-                    signal_type=self.signal_type,
-                    value=signal_value,
-                    raw_value=combined,
-                    metadata={
-                        "pe_ratio": m["pe"],
-                        "pb_ratio": m["pb"],
-                        "earnings_yield": m["ey"],
-                    }
-                ))
+                signals.append(
+                    Signal(
+                        symbol=symbol,
+                        signal_type=self.signal_type,
+                        value=signal_value,
+                        raw_value=combined,
+                        metadata={
+                            "pe_ratio": m["pe"],
+                            "pb_ratio": m["pb"],
+                            "earnings_yield": m["ey"],
+                        },
+                    )
+                )
 
         return signals
 
@@ -257,6 +258,7 @@ class ValueSignal(SignalGenerator):
 # =============================================================================
 # Quality Signals
 # =============================================================================
+
 
 class QualitySignal(SignalGenerator):
     """
@@ -268,7 +270,7 @@ class QualitySignal(SignalGenerator):
         self,
         roe_weight: float = 0.4,
         margin_weight: float = 0.3,
-        stability_weight: float = 0.3
+        stability_weight: float = 0.3,
     ):
         self.roe_weight = roe_weight
         self.margin_weight = margin_weight
@@ -279,10 +281,7 @@ class QualitySignal(SignalGenerator):
         return SignalType.QUALITY
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         metrics = {}
         for symbol in symbols:
@@ -313,8 +312,12 @@ class QualitySignal(SignalGenerator):
 
         # Get value lists for ranking
         roe_values = [m["roe"] for m in metrics.values() if m["roe"] is not None]
-        margin_values = [m["margin"] for m in metrics.values() if m["margin"] is not None]
-        stability_values = [m["stability"] for m in metrics.values() if m["stability"] is not None]
+        margin_values = [
+            m["margin"] for m in metrics.values() if m["margin"] is not None
+        ]
+        stability_values = [
+            m["stability"] for m in metrics.values() if m["stability"] is not None
+        ]
 
         signals = []
         for symbol, m in metrics.items():
@@ -334,20 +337,26 @@ class QualitySignal(SignalGenerator):
 
             if scores:
                 total_weight = sum(w for _, w in scores)
-                combined = sum(s * w for s, w in scores) / total_weight if total_weight > 0 else 50
+                combined = (
+                    sum(s * w for s, w in scores) / total_weight
+                    if total_weight > 0
+                    else 50
+                )
                 signal_value = (combined - 50) * 2
 
-                signals.append(Signal(
-                    symbol=symbol,
-                    signal_type=self.signal_type,
-                    value=signal_value,
-                    raw_value=combined,
-                    metadata={
-                        "roe": m["roe"],
-                        "profit_margin": m["margin"],
-                        "stability": m["stability"],
-                    }
-                ))
+                signals.append(
+                    Signal(
+                        symbol=symbol,
+                        signal_type=self.signal_type,
+                        value=signal_value,
+                        raw_value=combined,
+                        metadata={
+                            "roe": m["roe"],
+                            "profit_margin": m["margin"],
+                            "stability": m["stability"],
+                        },
+                    )
+                )
 
         return signals
 
@@ -355,6 +364,7 @@ class QualitySignal(SignalGenerator):
 # =============================================================================
 # Sentiment Signals
 # =============================================================================
+
 
 class NewsSentimentSignal(SignalGenerator):
     """News-based sentiment signal."""
@@ -368,7 +378,7 @@ class NewsSentimentSignal(SignalGenerator):
         symbols: list[str],
         market_data: dict[str, Any],
         sentiment_data: dict[str, Any] = None,
-        **kwargs
+        **kwargs,
     ) -> list[Signal]:
         if not sentiment_data:
             return []
@@ -379,16 +389,18 @@ class NewsSentimentSignal(SignalGenerator):
             news_sentiment = data.get("news_sentiment")
 
             if news_sentiment is not None:
-                signals.append(Signal(
-                    symbol=symbol,
-                    signal_type=self.signal_type,
-                    value=news_sentiment,  # Already -100 to 100
-                    raw_value=news_sentiment,
-                    metadata={
-                        "source": "news",
-                        "headline_count": data.get("headline_count", 0),
-                    }
-                ))
+                signals.append(
+                    Signal(
+                        symbol=symbol,
+                        signal_type=self.signal_type,
+                        value=news_sentiment,  # Already -100 to 100
+                        raw_value=news_sentiment,
+                        metadata={
+                            "source": "news",
+                            "headline_count": data.get("headline_count", 0),
+                        },
+                    )
+                )
 
         return signals
 
@@ -405,7 +417,7 @@ class SocialSentimentSignal(SignalGenerator):
         symbols: list[str],
         market_data: dict[str, Any],
         sentiment_data: dict[str, Any] = None,
-        **kwargs
+        **kwargs,
     ) -> list[Signal]:
         if not sentiment_data:
             return []
@@ -416,16 +428,18 @@ class SocialSentimentSignal(SignalGenerator):
             social_sentiment = data.get("social_sentiment")
 
             if social_sentiment is not None:
-                signals.append(Signal(
-                    symbol=symbol,
-                    signal_type=self.signal_type,
-                    value=social_sentiment,
-                    raw_value=social_sentiment,
-                    metadata={
-                        "source": "social",
-                        "mention_count": data.get("mention_count", 0),
-                    }
-                ))
+                signals.append(
+                    Signal(
+                        symbol=symbol,
+                        signal_type=self.signal_type,
+                        value=social_sentiment,
+                        raw_value=social_sentiment,
+                        metadata={
+                            "source": "social",
+                            "mention_count": data.get("mention_count", 0),
+                        },
+                    )
+                )
 
         return signals
 
@@ -442,7 +456,7 @@ class SentimentVelocitySignal(SignalGenerator):
         symbols: list[str],
         market_data: dict[str, Any],
         sentiment_data: dict[str, Any] = None,
-        **kwargs
+        **kwargs,
     ) -> list[Signal]:
         if not sentiment_data:
             return []
@@ -454,15 +468,17 @@ class SentimentVelocitySignal(SignalGenerator):
 
             if velocity is not None:
                 # Velocity is change over period, normalize to signal
-                signals.append(Signal(
-                    symbol=symbol,
-                    signal_type=self.signal_type,
-                    value=max(-100, min(100, velocity * 10)),  # Scale velocity
-                    raw_value=velocity,
-                    metadata={
-                        "period_days": data.get("velocity_period", 7),
-                    }
-                ))
+                signals.append(
+                    Signal(
+                        symbol=symbol,
+                        signal_type=self.signal_type,
+                        value=max(-100, min(100, velocity * 10)),  # Scale velocity
+                        raw_value=velocity,
+                        metadata={
+                            "period_days": data.get("velocity_period", 7),
+                        },
+                    )
+                )
 
         return signals
 
@@ -470,6 +486,7 @@ class SentimentVelocitySignal(SignalGenerator):
 # =============================================================================
 # Volatility Signals
 # =============================================================================
+
 
 class RealizedVolatilitySignal(SignalGenerator):
     """Realized volatility signal (low vol = positive signal)."""
@@ -482,10 +499,7 @@ class RealizedVolatilitySignal(SignalGenerator):
         return SignalType.REALIZED_VOLATILITY
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         vol_data = {}
 
@@ -497,7 +511,11 @@ class RealizedVolatilitySignal(SignalGenerator):
                 # Calculate daily returns
                 returns = []
                 for i in range(1, self.lookback_days + 1):
-                    r = (prices[-i] - prices[-i-1]) / prices[-i-1] if prices[-i-1] > 0 else 0
+                    r = (
+                        (prices[-i] - prices[-i - 1]) / prices[-i - 1]
+                        if prices[-i - 1] > 0
+                        else 0
+                    )
                     returns.append(r)
 
                 # Annualized volatility
@@ -516,16 +534,18 @@ class RealizedVolatilitySignal(SignalGenerator):
             vol_rank = self.percentile_rank(vol, vol_values)
             signal_value = (100 - vol_rank - 50) * 2  # Low vol = positive signal
 
-            signals.append(Signal(
-                symbol=symbol,
-                signal_type=self.signal_type,
-                value=signal_value,
-                raw_value=vol,
-                metadata={
-                    "annualized_volatility": vol,
-                    "lookback_days": self.lookback_days,
-                }
-            ))
+            signals.append(
+                Signal(
+                    symbol=symbol,
+                    signal_type=self.signal_type,
+                    value=signal_value,
+                    raw_value=vol,
+                    metadata={
+                        "annualized_volatility": vol,
+                        "lookback_days": self.lookback_days,
+                    },
+                )
+            )
 
         return signals
 
@@ -533,6 +553,7 @@ class RealizedVolatilitySignal(SignalGenerator):
 # =============================================================================
 # Reversal Signals
 # =============================================================================
+
 
 class ShortTermReversalSignal(SignalGenerator):
     """
@@ -548,10 +569,7 @@ class ShortTermReversalSignal(SignalGenerator):
         return SignalType.REVERSAL
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         returns = {}
 
@@ -585,17 +603,19 @@ class ShortTermReversalSignal(SignalGenerator):
             # Positive z-score = sell signal (overbought)
             signal_value = -z_score * 30  # Scale to reasonable range
 
-            signals.append(Signal(
-                symbol=symbol,
-                signal_type=self.signal_type,
-                value=max(-100, min(100, signal_value)),
-                raw_value=ret,
-                metadata={
-                    "return": ret,
-                    "z_score": z_score,
-                    "lookback_days": self.lookback_days,
-                }
-            ))
+            signals.append(
+                Signal(
+                    symbol=symbol,
+                    signal_type=self.signal_type,
+                    value=max(-100, min(100, signal_value)),
+                    raw_value=ret,
+                    metadata={
+                        "return": ret,
+                        "z_score": z_score,
+                        "lookback_days": self.lookback_days,
+                    },
+                )
+            )
 
         return signals
 
@@ -603,6 +623,7 @@ class ShortTermReversalSignal(SignalGenerator):
 # =============================================================================
 # Statistical Signals
 # =============================================================================
+
 
 class ZScoreSignal(SignalGenerator):
     """
@@ -618,10 +639,7 @@ class ZScoreSignal(SignalGenerator):
         return SignalType.STATISTICAL_ZSCORE
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         signals = []
 
@@ -631,7 +649,7 @@ class ZScoreSignal(SignalGenerator):
             current_price = data.get("price")
 
             if prices and current_price and len(prices) >= self.lookback_days:
-                window = prices[-self.lookback_days:]
+                window = prices[-self.lookback_days :]
                 mean = np.mean(window)
                 std = np.std(window)
 
@@ -641,18 +659,20 @@ class ZScoreSignal(SignalGenerator):
                     # Mean reversion: buy when below mean, sell when above
                     signal_value = -z_score * 25
 
-                    signals.append(Signal(
-                        symbol=symbol,
-                        signal_type=self.signal_type,
-                        value=max(-100, min(100, signal_value)),
-                        raw_value=z_score,
-                        metadata={
-                            "z_score": z_score,
-                            "mean": mean,
-                            "std": std,
-                            "lookback_days": self.lookback_days,
-                        }
-                    ))
+                    signals.append(
+                        Signal(
+                            symbol=symbol,
+                            signal_type=self.signal_type,
+                            value=max(-100, min(100, signal_value)),
+                            raw_value=z_score,
+                            metadata={
+                                "z_score": z_score,
+                                "mean": mean,
+                                "std": std,
+                                "lookback_days": self.lookback_days,
+                            },
+                        )
+                    )
 
         return signals
 
@@ -660,6 +680,7 @@ class ZScoreSignal(SignalGenerator):
 # =============================================================================
 # Dividend Signals
 # =============================================================================
+
 
 class DividendYieldSignal(SignalGenerator):
     """
@@ -675,10 +696,7 @@ class DividendYieldSignal(SignalGenerator):
         return SignalType.VALUE  # Use VALUE type for now, could add DIVIDEND
 
     async def generate(
-        self,
-        symbols: list[str],
-        market_data: dict[str, Any],
-        **kwargs
+        self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
         yields = {}
 
@@ -701,16 +719,18 @@ class DividendYieldSignal(SignalGenerator):
             # Convert to -100 to 100 (higher yield = higher signal)
             signal_value = (yield_score - 50) * 2
 
-            signals.append(Signal(
-                symbol=symbol,
-                signal_type=self.signal_type,
-                value=signal_value,
-                raw_value=div_yield,
-                metadata={
-                    "dividend_yield": div_yield,
-                    "yield_percentile": yield_score,
-                }
-            ))
+            signals.append(
+                Signal(
+                    symbol=symbol,
+                    signal_type=self.signal_type,
+                    value=signal_value,
+                    raw_value=div_yield,
+                    metadata={
+                        "dividend_yield": div_yield,
+                        "yield_percentile": yield_score,
+                    },
+                )
+            )
 
         return signals
 
@@ -718,6 +738,7 @@ class DividendYieldSignal(SignalGenerator):
 # =============================================================================
 # Signal Combiner
 # =============================================================================
+
 
 class SignalCombiner:
     """
@@ -729,9 +750,7 @@ class SignalCombiner:
         self.weights = weights or {}
 
     def combine(
-        self,
-        signals: list[Signal],
-        method: str = "weighted_average"
+        self, signals: list[Signal], method: str = "weighted_average"
     ) -> dict[str, float]:
         """
         Combine signals for each symbol.
@@ -759,7 +778,9 @@ class SignalCombiner:
                     weight = self.weights.get(s.signal_type, 1.0) * s.confidence
                     weighted_sum += s.value * weight
                     total_weight += weight
-                combined[symbol] = weighted_sum / total_weight if total_weight > 0 else 0
+                combined[symbol] = (
+                    weighted_sum / total_weight if total_weight > 0 else 0
+                )
 
             elif method == "rank_average":
                 # Simple average of all signals

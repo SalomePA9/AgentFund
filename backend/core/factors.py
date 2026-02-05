@@ -15,6 +15,7 @@ from scipy import stats
 @dataclass
 class FactorScores:
     """All factor scores for a single stock."""
+
     symbol: str
     momentum_score: float
     value_score: float
@@ -61,7 +62,7 @@ class FactorCalculator:
     def calculate_all(
         self,
         market_data: dict[str, dict[str, Any]],
-        sectors: dict[str, str] | None = None
+        sectors: dict[str, str] | None = None,
     ) -> dict[str, FactorScores]:
         """
         Calculate all factor scores for a universe of stocks.
@@ -102,7 +103,9 @@ class FactorCalculator:
         value_scores = self._to_percentiles(value_raw)
         quality_scores = self._to_percentiles(quality_raw)
         dividend_scores = self._to_percentiles(dividend_raw)
-        volatility_scores = self._to_percentiles(volatility_raw, invert=True)  # Lower vol = higher score
+        volatility_scores = self._to_percentiles(
+            volatility_raw, invert=True
+        )  # Lower vol = higher score
 
         # Build results
         for symbol in symbols:
@@ -147,8 +150,7 @@ class FactorCalculator:
         return results
 
     def _calculate_momentum_raw(
-        self,
-        market_data: dict[str, dict[str, Any]]
+        self, market_data: dict[str, dict[str, Any]]
     ) -> dict[str, float]:
         """
         Calculate raw momentum scores.
@@ -174,7 +176,11 @@ class FactorCalculator:
             if len(prices) >= 252:
                 price_12m_ago = prices[-252]
                 price_1m_ago = prices[-21] if len(prices) >= 21 else prices[-1]
-                mom_12m_skip = (price_1m_ago - price_12m_ago) / price_12m_ago if price_12m_ago > 0 else 0
+                mom_12m_skip = (
+                    (price_1m_ago - price_12m_ago) / price_12m_ago
+                    if price_12m_ago > 0
+                    else 0
+                )
             else:
                 mom_12m_skip = mom_6m * 0.5 if mom_6m else 0
 
@@ -187,9 +193,9 @@ class FactorCalculator:
                 ma_normalized = (ma_align + 1) / 2 if ma_align is not None else 0.5
 
                 raw_score = (
-                    0.4 * (mom_6m * 100) +  # Convert to percentage
-                    0.3 * (mom_12m_skip * 100) +
-                    0.3 * (ma_normalized * 100)
+                    0.4 * (mom_6m * 100)  # Convert to percentage
+                    + 0.3 * (mom_12m_skip * 100)
+                    + 0.3 * (ma_normalized * 100)
                 )
                 results[symbol] = raw_score
 
@@ -198,7 +204,7 @@ class FactorCalculator:
     def _calculate_value_raw(
         self,
         market_data: dict[str, dict[str, Any]],
-        sectors: dict[str, str] | None = None
+        sectors: dict[str, str] | None = None,
     ) -> dict[str, float]:
         """
         Calculate raw value scores.
@@ -232,8 +238,7 @@ class FactorCalculator:
         return results
 
     def _calc_value_for_group(
-        self,
-        group_data: dict[str, dict[str, Any]]
+        self, group_data: dict[str, dict[str, Any]]
     ) -> dict[str, float]:
         """Calculate value scores for a group of stocks."""
         results = {}
@@ -267,7 +272,7 @@ class FactorCalculator:
     def _calculate_quality_raw(
         self,
         market_data: dict[str, dict[str, Any]],
-        sectors: dict[str, str] | None = None
+        sectors: dict[str, str] | None = None,
     ) -> dict[str, float]:
         """
         Calculate raw quality scores.
@@ -299,7 +304,9 @@ class FactorCalculator:
         # Calculate percentiles
         roe_percentiles = self._to_percentiles(roe_values)
         margin_percentiles = self._to_percentiles(margin_values)
-        debt_percentiles = self._to_percentiles(debt_values, invert=True)  # Lower debt is better
+        debt_percentiles = self._to_percentiles(
+            debt_values, invert=True
+        )  # Lower debt is better
 
         # Combine scores
         for symbol in market_data:
@@ -307,17 +314,12 @@ class FactorCalculator:
             margin_score = margin_percentiles.get(symbol, 50)
             debt_score = debt_percentiles.get(symbol, 50)
 
-            results[symbol] = (
-                0.4 * roe_score +
-                0.3 * margin_score +
-                0.3 * debt_score
-            )
+            results[symbol] = 0.4 * roe_score + 0.3 * margin_score + 0.3 * debt_score
 
         return results
 
     def _calculate_dividend_raw(
-        self,
-        market_data: dict[str, dict[str, Any]]
+        self, market_data: dict[str, dict[str, Any]]
     ) -> dict[str, float]:
         """
         Calculate raw dividend scores.
@@ -360,8 +362,7 @@ class FactorCalculator:
         return results
 
     def _calculate_volatility_raw(
-        self,
-        market_data: dict[str, dict[str, Any]]
+        self, market_data: dict[str, dict[str, Any]]
     ) -> dict[str, float]:
         """
         Calculate raw volatility scores.
@@ -388,9 +389,7 @@ class FactorCalculator:
         return results
 
     def _to_percentiles(
-        self,
-        values: dict[str, float],
-        invert: bool = False
+        self, values: dict[str, float], invert: bool = False
     ) -> dict[str, float]:
         """
         Convert raw values to percentile scores (0-100).
@@ -409,8 +408,12 @@ class FactorCalculator:
         raw_values = [values[s] for s in symbols]
 
         # Calculate percentile ranks
-        ranks = stats.rankdata(raw_values, method='average')
-        percentiles = (ranks - 1) / (len(ranks) - 1) * 100 if len(ranks) > 1 else [50.0] * len(ranks)
+        ranks = stats.rankdata(raw_values, method="average")
+        percentiles = (
+            (ranks - 1) / (len(ranks) - 1) * 100
+            if len(ranks) > 1
+            else [50.0] * len(ranks)
+        )
 
         if invert:
             percentiles = [100 - p for p in percentiles]
@@ -430,9 +433,7 @@ class FactorCalculator:
         return None
 
     def _calc_ma_alignment(
-        self,
-        data: dict[str, Any],
-        current_price: float | None
+        self, data: dict[str, Any], current_price: float | None
     ) -> float | None:
         """
         Calculate MA alignment score (-1 to +1).
@@ -477,9 +478,7 @@ class FactorCalculator:
         return score
 
     def _calc_atr_percent(
-        self,
-        data: dict[str, Any],
-        current_price: float | None
+        self, data: dict[str, Any], current_price: float | None
     ) -> float | None:
         """Calculate ATR as percentage of price."""
         if not current_price or current_price <= 0:
@@ -502,7 +501,7 @@ def calculate_atr(
     high_prices: list[float],
     low_prices: list[float],
     close_prices: list[float],
-    period: int = 14
+    period: int = 14,
 ) -> float | None:
     """
     Calculate Average True Range (ATR) for position sizing.
@@ -533,11 +532,7 @@ def calculate_atr(
         # - Current High - Current Low
         # - |Current High - Previous Close|
         # - |Current Low - Previous Close|
-        tr = max(
-            high - low,
-            abs(high - prev_close),
-            abs(low - prev_close)
-        )
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
         tr_values.append(tr)
 
     if len(tr_values) < period:
@@ -554,7 +549,7 @@ def calculate_position_size(
     stop_price: float,
     atr: float | None = None,
     atr_multiplier: float = 2.0,
-    max_position_pct: float = 0.10
+    max_position_pct: float = 0.10,
 ) -> dict[str, Any]:
     """
     Calculate position size based on risk parameters.
@@ -595,7 +590,7 @@ def calculate_position_size(
             "position_pct": 0,
             "stop_price": calculated_stop,
             "risk_amount": 0,
-            "error": "Invalid stop distance"
+            "error": "Invalid stop distance",
         }
 
     # Calculate shares based on risk
@@ -615,7 +610,7 @@ def calculate_position_size(
             "position_pct": 0,
             "stop_price": calculated_stop,
             "risk_amount": 0,
-            "error": "Position size too small"
+            "error": "Position size too small",
         }
 
     position_value = shares * entry_price
@@ -627,5 +622,5 @@ def calculate_position_size(
         "position_value": round(position_value, 2),
         "position_pct": round(position_pct * 100, 2),
         "stop_price": round(calculated_stop, 2),
-        "risk_amount": round(actual_risk, 2)
+        "risk_amount": round(actual_risk, 2),
     }

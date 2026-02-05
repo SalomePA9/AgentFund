@@ -11,13 +11,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api import agents, auth, broker, chat, market, reports, websocket
 from config import get_settings
-from api import auth, agents, broker, market, reports, chat, websocket
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -34,11 +33,14 @@ async def lifespan(app: FastAPI):
     if settings.ALPACA_API_KEY and settings.ALPACA_API_SECRET:
         try:
             from api.websocket import setup_alpaca_stream
+
             await setup_alpaca_stream()
             logger.info("Alpaca real-time stream initialized")
         except Exception as e:
             logger.warning(f"Failed to initialize Alpaca stream: {e}")
-            logger.info("Real-time data will not be available until Alpaca credentials are configured")
+            logger.info(
+                "Real-time data will not be available until Alpaca credentials are configured"
+            )
     else:
         logger.info("Alpaca credentials not configured - real-time data disabled")
 
@@ -49,6 +51,7 @@ async def lifespan(app: FastAPI):
 
     # Stop Alpaca stream
     from data.alpaca_stream import get_stream_client
+
     stream_client = get_stream_client()
     if stream_client:
         await stream_client.stop()
