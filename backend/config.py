@@ -51,9 +51,29 @@ class Settings(BaseSettings):
     # Claude API (optional for Phase 1, required for Phase 2 reports/chat)
     anthropic_api_key: str | None = None
 
-    # Reddit (for sentiment)
+    # Sentiment Analysis Configuration
+    # Reddit API (for social sentiment)
     reddit_client_id: str | None = None
     reddit_client_secret: str | None = None
+    reddit_user_agent: str = "AgentFund Sentiment Analyzer 1.0"
+
+    # StockTwits (no auth required for public API)
+    stocktwits_enabled: bool = True
+
+    # Sentiment weights (must sum to 1.0)
+    sentiment_news_weight: float = 0.4
+    sentiment_social_weight: float = 0.3
+    sentiment_velocity_weight: float = 0.3
+
+    # Sentiment processing settings
+    sentiment_cache_ttl_minutes: int = 30
+    sentiment_batch_size: int = 10
+    sentiment_rate_limit_delay: float = 0.5
+    sentiment_min_sample_size: int = 5  # Minimum items for reliable sentiment
+
+    # FinBERT model settings
+    finbert_model_name: str = "ProsusAI/finbert"
+    finbert_max_length: int = 512
 
     # Email (Resend)
     resend_api_key: str | None = None
