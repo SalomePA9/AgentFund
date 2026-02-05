@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     alpaca_api_secret: str | None = None
     alpaca_paper_mode: bool = True
 
+    # Uppercase aliases for convenience
+    @property
+    def ALPACA_API_KEY(self) -> str | None:
+        return self.alpaca_api_key
+
+    @property
+    def ALPACA_API_SECRET(self) -> str | None:
+        return self.alpaca_api_secret
+
     # Claude API
     anthropic_api_key: str
 
@@ -56,3 +65,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+# Global settings instance for direct import
+settings = get_settings()

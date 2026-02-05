@@ -5,24 +5,54 @@ An AI-native trading platform where users create and manage
 a team of autonomous trading agents.
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
-from api import auth, agents, broker, market, reports, chat
+from api import auth, agents, broker, market, reports, chat, websocket
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
-    # Startup
     settings = get_settings()
-    print(f"Starting {settings.app_name}...")
+
+    # Startup
+    logger.info(f"Starting {settings.app_name}...")
+
+    # Initialize Alpaca WebSocket stream for real-time market data
+    if settings.ALPACA_API_KEY and settings.ALPACA_API_SECRET:
+        try:
+            from api.websocket import setup_alpaca_stream
+            await setup_alpaca_stream()
+            logger.info("Alpaca real-time stream initialized")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Alpaca stream: {e}")
+            logger.info("Real-time data will not be available until Alpaca credentials are configured")
+    else:
+        logger.info("Alpaca credentials not configured - real-time data disabled")
+
     yield
+
     # Shutdown
-    print("Shutting down...")
+    logger.info("Shutting down...")
+
+    # Stop Alpaca stream
+    from data.alpaca_stream import get_stream_client
+    stream_client = get_stream_client()
+    if stream_client:
+        await stream_client.stop()
+        logger.info("Alpaca stream stopped")
 
 
 def create_app() -> FastAPI:
@@ -54,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(market.router, prefix="/api/market", tags=["Market Data"])
     app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
     app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+    app.include_router(websocket.router, prefix="/api", tags=["WebSocket"])
 
     @app.get("/health")
     async def health_check():
