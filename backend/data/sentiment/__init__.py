@@ -3,12 +3,13 @@ Sentiment Analysis Module
 
 Provides sentiment analysis from multiple sources:
 - News: Google News RSS + FinBERT analysis
-- Social: StockTwits API + Reddit PRAW
+- Social: StockTwits API + Alpha Vantage
 
 Exports:
 - SentimentAnalyzer: Abstract base class
 - CombinedSentimentCalculator: Combines multiple sources
 - NewsSentimentAnalyzer: News headlines via FinBERT
+- SocialSentimentAnalyzer: StockTwits + Alpha Vantage
 - Data models: SentimentResult, SentimentScore, etc.
 """
 
@@ -30,6 +31,12 @@ from data.sentiment.news import (
     NewsSentimentAnalyzer,
     analyze_news_sentiment,
 )
+from data.sentiment.social import (
+    AlphaVantageSentimentAnalyzer,
+    SocialSentimentAnalyzer,
+    StockTwitsSentimentAnalyzer,
+    analyze_social_sentiment,
+)
 
 __all__ = [
     # Base classes
@@ -39,6 +46,11 @@ __all__ = [
     "NewsSentimentAnalyzer",
     "FinBERTAnalyzer",
     "analyze_news_sentiment",
+    # Social sentiment
+    "SocialSentimentAnalyzer",
+    "StockTwitsSentimentAnalyzer",
+    "AlphaVantageSentimentAnalyzer",
+    "analyze_social_sentiment",
     # Models
     "SentimentResult",
     "SentimentScore",

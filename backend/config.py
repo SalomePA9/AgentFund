@@ -52,13 +52,12 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
 
     # Sentiment Analysis Configuration
-    # Reddit API (for social sentiment)
-    reddit_client_id: str | None = None
-    reddit_client_secret: str | None = None
-    reddit_user_agent: str = "AgentFund Sentiment Analyzer 1.0"
-
     # StockTwits (no auth required for public API)
     stocktwits_enabled: bool = True
+
+    # Alpha Vantage (for supplemental news sentiment)
+    # Free tier: 25 requests/day - get key at https://www.alphavantage.co/support/#api-key
+    alphavantage_api_key: str | None = None
 
     # Sentiment weights (must sum to 1.0)
     sentiment_news_weight: float = 0.4
