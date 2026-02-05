@@ -7,9 +7,12 @@ import asyncio
 import logging
 import sys
 from datetime import datetime
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, "/home/user/AgentFund/backend")
+# Add parent directory to path for imports when running as script
+_backend_dir = Path(__file__).resolve().parent.parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
 
 from data.market_data import (
     get_stock_universe,

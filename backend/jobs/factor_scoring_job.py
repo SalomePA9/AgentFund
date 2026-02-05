@@ -7,14 +7,21 @@ Runs as part of the nightly job pipeline.
 
 import asyncio
 import logging
+import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, "/home/user/AgentFund/backend")
+# Add parent directory to path for imports when running as script
+_backend_dir = Path(__file__).resolve().parent.parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
 
 from core.factors import FactorCalculator, FactorScores
-from database import supabase
+from database import get_supabase_client
+
+# Get database client
+supabase = get_supabase_client()
 
 # Configure logging
 logging.basicConfig(

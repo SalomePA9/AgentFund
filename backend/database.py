@@ -19,3 +19,7 @@ def get_supabase_client() -> Client:
 def get_db() -> Client:
     """Dependency for FastAPI routes to get database client."""
     return get_supabase_client()
+
+
+# Global client instance for direct import (used by jobs)
+supabase = get_supabase_client()

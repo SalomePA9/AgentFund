@@ -17,8 +17,14 @@ class Settings(BaseSettings):
 
     # Database (Supabase)
     supabase_url: str
-    supabase_key: str
+    supabase_anon_key: str  # Public key for client operations
+    supabase_service_key: str | None = None  # Service role key for backend
     database_url: str | None = None
+
+    @property
+    def supabase_key(self) -> str:
+        """Return service key if available, otherwise anon key."""
+        return self.supabase_service_key or self.supabase_anon_key
 
     # Authentication
     jwt_secret: str
@@ -42,8 +48,8 @@ class Settings(BaseSettings):
     def ALPACA_API_SECRET(self) -> str | None:
         return self.alpaca_api_secret
 
-    # Claude API
-    anthropic_api_key: str
+    # Claude API (optional for Phase 1, required for Phase 2 reports/chat)
+    anthropic_api_key: str | None = None
 
     # Reddit (for sentiment)
     reddit_client_id: str | None = None
