@@ -20,6 +20,7 @@ from httpx import AsyncClient
 # Set test environment before importing app
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
+os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("JWT_SECRET", "test-secret-key-for-testing-only-32-chars")
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key-32-chars-here")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-key")
