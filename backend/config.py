@@ -1,0 +1,58 @@
+"""
+Application configuration using Pydantic Settings.
+Loads environment variables from .env file.
+"""
+
+from functools import lru_cache
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables."""
+
+    # Application
+    app_name: str = "AgentFund API"
+    debug: bool = False
+    api_version: str = "v1"
+
+    # Database (Supabase)
+    supabase_url: str
+    supabase_key: str
+    database_url: str | None = None
+
+    # Authentication
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+
+    # Encryption (for storing user API keys)
+    encryption_key: str
+
+    # Alpaca (default/fallback for testing)
+    alpaca_api_key: str | None = None
+    alpaca_api_secret: str | None = None
+    alpaca_paper_mode: bool = True
+
+    # Claude API
+    anthropic_api_key: str
+
+    # Reddit (for sentiment)
+    reddit_client_id: str | None = None
+    reddit_client_secret: str | None = None
+
+    # Email (Resend)
+    resend_api_key: str | None = None
+
+    # CORS
+    cors_origins: list[str] = ["http://localhost:3000"]
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Get cached settings instance."""
+    return Settings()
