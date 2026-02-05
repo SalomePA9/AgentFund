@@ -88,6 +88,15 @@ class ScreenRequest(BaseModel):
     min_volatility_score: float | None = None
     min_composite_score: float | None = None
 
+    # Sentiment filters (-100 to +100)
+    min_combined_sentiment: float | None = None
+    max_combined_sentiment: float | None = None
+    min_news_sentiment: float | None = None
+    min_social_sentiment: float | None = None
+    min_sentiment_velocity: float | None = None  # Positive = improving
+    sentiment_bullish_only: bool = False  # Only stocks with combined > 20
+    sentiment_triangulation: bool = False  # News and social must agree
+
     # Price/MA filters
     above_ma_200: bool = True
     above_ma_100: bool = False
@@ -112,7 +121,34 @@ class SentimentResponse(BaseModel):
     social_sentiment: float | None = None
     combined_sentiment: float | None = None
     sentiment_velocity: float | None = None
-    news_headlines: list[dict] | None = None
+    velocity_direction: str | None = None  # improving, declining, stable
+    strength: str | None = None  # very_bullish, bullish, neutral, bearish, very_bearish
+    has_sufficient_data: bool = False
+    news_sample_size: int = 0
+    social_sample_size: int = 0
+    history: list[dict] | None = None
+
+
+class SentimentBatchRequest(BaseModel):
+    """Request for batch sentiment lookup."""
+
+    symbols: list[str]
+
+
+class SentimentBatchResponse(BaseModel):
+    """Response for batch sentiment lookup."""
+
+    data: dict[str, SentimentResponse]
+    count: int
+
+
+class TrendingSentimentResponse(BaseModel):
+    """Response for trending sentiment stocks."""
+
+    most_bullish: list[dict]
+    most_bearish: list[dict]
+    fastest_improving: list[dict]
+    fastest_declining: list[dict]
 
 
 class StockListResponse(BaseModel):
@@ -235,6 +271,20 @@ async def screen_stocks(
     if screen.min_composite_score is not None:
         query = query.gte("composite_score", screen.min_composite_score)
 
+    # Apply sentiment filters
+    if screen.min_combined_sentiment is not None:
+        query = query.gte("combined_sentiment", screen.min_combined_sentiment)
+    if screen.max_combined_sentiment is not None:
+        query = query.lte("combined_sentiment", screen.max_combined_sentiment)
+    if screen.min_news_sentiment is not None:
+        query = query.gte("news_sentiment", screen.min_news_sentiment)
+    if screen.min_social_sentiment is not None:
+        query = query.gte("social_sentiment", screen.min_social_sentiment)
+    if screen.min_sentiment_velocity is not None:
+        query = query.gte("sentiment_velocity", screen.min_sentiment_velocity)
+    if screen.sentiment_bullish_only:
+        query = query.gte("combined_sentiment", 20)
+
     # Strategy-specific defaults and sorting
     sort_field = screen.sort_by
     sort_desc = screen.sort_desc
@@ -312,7 +362,26 @@ async def screen_stocks(
             if s.get("sector") not in screen.exclude_sectors
         ]
 
+    # Post-process: sentiment triangulation (news and social must agree)
+    if screen.sentiment_triangulation:
+        filtered = [
+            s for s in filtered
+            if _sentiments_agree(s.get("news_sentiment"), s.get("social_sentiment"))
+        ]
+
     return filtered[: screen.limit]
+
+
+def _sentiments_agree(news: float | None, social: float | None) -> bool:
+    """Check if news and social sentiment agree (both positive or both negative)."""
+    if news is None or social is None:
+        return False
+    # Both bullish (> 10) or both bearish (< -10)
+    if news > 10 and social > 10:
+        return True
+    if news < -10 and social < -10:
+        return True
+    return False
 
 
 @router.get("/sentiment/{symbol}", response_model=SentimentResponse)
@@ -320,8 +389,14 @@ async def get_sentiment(
     symbol: str,
     current_user: Annotated[dict, Depends(get_current_user)],
     db: Annotated[Client, Depends(get_db)],
+    include_history: bool = Query(False, description="Include sentiment history"),
 ):
-    """Get sentiment data for a specific stock."""
+    """
+    Get sentiment data for a specific stock.
+
+    Returns news sentiment, social sentiment, combined score, and velocity.
+    Optionally includes historical sentiment data for charting.
+    """
     # Get current sentiment from stocks table
     stock = db.table("stocks").select(
         "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
@@ -333,26 +408,179 @@ async def get_sentiment(
             detail=f"Stock {symbol} not found",
         )
 
-    # Get recent sentiment history
-    history = (
-        db.table("sentiment_history")
-        .select("*")
-        .eq("symbol", symbol.upper())
-        .order("recorded_at", desc=True)
-        .limit(10)
-        .execute()
-    )
-
     stock_data = stock.data[0]
+
+    # Get recent sentiment history if requested
+    history_data = None
+    news_sample = 0
+    social_sample = 0
+
+    if include_history:
+        history = (
+            db.table("sentiment_history")
+            .select("*")
+            .eq("symbol", symbol.upper())
+            .order("recorded_at", desc=True)
+            .limit(30)
+            .execute()
+        )
+        if history.data:
+            history_data = [
+                {
+                    "date": h.get("recorded_at"),
+                    "news": h.get("news_sentiment"),
+                    "social": h.get("social_sentiment"),
+                    "combined": h.get("combined_sentiment"),
+                }
+                for h in history.data
+            ]
+            # Get sample sizes from most recent record
+            if history.data:
+                news_sample = history.data[0].get("news_sample_size", 0)
+                social_sample = history.data[0].get("social_sample_size", 0)
+
+    # Calculate derived fields
+    combined = stock_data.get("combined_sentiment")
+    velocity = stock_data.get("sentiment_velocity")
 
     return SentimentResponse(
         symbol=stock_data["symbol"],
         news_sentiment=stock_data.get("news_sentiment"),
         social_sentiment=stock_data.get("social_sentiment"),
-        combined_sentiment=stock_data.get("combined_sentiment"),
-        sentiment_velocity=stock_data.get("sentiment_velocity"),
-        news_headlines=None,  # TODO: Fetch from sentiment analysis
+        combined_sentiment=combined,
+        sentiment_velocity=velocity,
+        velocity_direction=_get_velocity_direction(velocity),
+        strength=_get_sentiment_strength(combined),
+        has_sufficient_data=(news_sample + social_sample) >= 5,
+        news_sample_size=news_sample,
+        social_sample_size=social_sample,
+        history=history_data,
     )
+
+
+@router.post("/sentiment/batch", response_model=SentimentBatchResponse)
+async def get_sentiment_batch(
+    request: SentimentBatchRequest,
+    current_user: Annotated[dict, Depends(get_current_user)],
+    db: Annotated[Client, Depends(get_db)],
+):
+    """
+    Get sentiment data for multiple stocks at once.
+
+    Accepts up to 50 symbols per request.
+    """
+    if len(request.symbols) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 50 symbols per request",
+        )
+
+    symbols = [s.upper() for s in request.symbols]
+
+    result = db.table("stocks").select(
+        "symbol, news_sentiment, social_sentiment, combined_sentiment, sentiment_velocity"
+    ).in_("symbol", symbols).execute()
+
+    data = {}
+    for stock in result.data:
+        symbol = stock["symbol"]
+        combined = stock.get("combined_sentiment")
+        velocity = stock.get("sentiment_velocity")
+
+        data[symbol] = SentimentResponse(
+            symbol=symbol,
+            news_sentiment=stock.get("news_sentiment"),
+            social_sentiment=stock.get("social_sentiment"),
+            combined_sentiment=combined,
+            sentiment_velocity=velocity,
+            velocity_direction=_get_velocity_direction(velocity),
+            strength=_get_sentiment_strength(combined),
+        )
+
+    return SentimentBatchResponse(data=data, count=len(data))
+
+
+@router.get("/sentiment/trending", response_model=TrendingSentimentResponse)
+async def get_trending_sentiment(
+    current_user: Annotated[dict, Depends(get_current_user)],
+    db: Annotated[Client, Depends(get_db)],
+    limit: int = Query(10, ge=1, le=50),
+):
+    """
+    Get stocks with notable sentiment movements.
+
+    Returns:
+    - Most bullish: Highest combined sentiment
+    - Most bearish: Lowest combined sentiment
+    - Fastest improving: Highest positive velocity
+    - Fastest declining: Highest negative velocity
+    """
+    # Most bullish
+    bullish = db.table("stocks").select(
+        "symbol, name, combined_sentiment, sentiment_velocity, sector"
+    ).not_.is_("combined_sentiment", "null").order(
+        "combined_sentiment", desc=True
+    ).limit(limit).execute()
+
+    # Most bearish
+    bearish = db.table("stocks").select(
+        "symbol, name, combined_sentiment, sentiment_velocity, sector"
+    ).not_.is_("combined_sentiment", "null").order(
+        "combined_sentiment", desc=False
+    ).limit(limit).execute()
+
+    # Fastest improving (positive velocity)
+    improving = db.table("stocks").select(
+        "symbol, name, combined_sentiment, sentiment_velocity, sector"
+    ).not_.is_("sentiment_velocity", "null").gt(
+        "sentiment_velocity", 0
+    ).order(
+        "sentiment_velocity", desc=True
+    ).limit(limit).execute()
+
+    # Fastest declining (negative velocity)
+    declining = db.table("stocks").select(
+        "symbol, name, combined_sentiment, sentiment_velocity, sector"
+    ).not_.is_("sentiment_velocity", "null").lt(
+        "sentiment_velocity", 0
+    ).order(
+        "sentiment_velocity", desc=False
+    ).limit(limit).execute()
+
+    return TrendingSentimentResponse(
+        most_bullish=bullish.data,
+        most_bearish=bearish.data,
+        fastest_improving=improving.data,
+        fastest_declining=declining.data,
+    )
+
+
+def _get_velocity_direction(velocity: float | None) -> str | None:
+    """Convert velocity to direction string."""
+    if velocity is None:
+        return None
+    if velocity > 2:
+        return "improving"
+    elif velocity < -2:
+        return "declining"
+    else:
+        return "stable"
+
+
+def _get_sentiment_strength(combined: float | None) -> str | None:
+    """Convert combined sentiment to strength category."""
+    if combined is None:
+        return None
+    if combined <= -60:
+        return "very_bearish"
+    elif combined <= -20:
+        return "bearish"
+    elif combined <= 20:
+        return "neutral"
+    elif combined <= 60:
+        return "bullish"
+    else:
+        return "very_bullish"
 
 
 @router.get("/sectors")
