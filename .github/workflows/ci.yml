@@ -351,7 +351,16 @@ jobs:
         run: |
           cd backend
           uvicorn main:app --host 0.0.0.0 --port 8000 &
-          sleep 5
+          echo "Waiting for backend to be ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8000/health > /dev/null; then
+              echo "Backend is ready!"
+              break
+            fi
+            echo "Attempt $i: Backend not ready yet, waiting..."
+            sleep 2
+          done
+          curl -s http://localhost:8000/health || (echo "Backend failed to start" && exit 1)
 
       - name: Run E2E tests
         env:
