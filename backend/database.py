@@ -3,10 +3,13 @@ Database connection and utilities using Supabase.
 """
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from supabase import Client, create_client
 
 from config import get_settings
+
+_supabase_client: Client | None = None
 
 
 @lru_cache
@@ -21,5 +24,13 @@ def get_db() -> Client:
     return get_supabase_client()
 
 
+class _LazySupabaseClient:
+    """Lazy proxy for Supabase client to avoid module-level initialization."""
+
+    def __getattr__(self, name):
+        return getattr(get_supabase_client(), name)
+
+
 # Global client instance for direct import (used by jobs)
-supabase = get_supabase_client()
+# Uses lazy loading to avoid initialization at import time
+supabase = _LazySupabaseClient()
