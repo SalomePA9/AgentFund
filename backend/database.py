@@ -3,7 +3,6 @@ Database connection and utilities using Supabase.
 """
 
 from functools import lru_cache
-from typing import TYPE_CHECKING
 
 from supabase import Client, create_client
 
