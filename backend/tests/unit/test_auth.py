@@ -158,8 +158,9 @@ class TestAuthEndpoints:
     @pytest.mark.api
     def test_register_success(self, client, mock_db):
         """Test successful user registration."""
-        # Configure mock data - no existing user, then return created user
-        mock_db._tables_data["users"] = [
+        # Configure mock - empty for existence check, return created user for insert
+        mock_db._tables_data["users"] = []  # No existing user
+        mock_db._insert_data["users"] = [
             {
                 "id": "new-user-id",
                 "email": "newuser@example.com",

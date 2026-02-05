@@ -78,18 +78,32 @@ class MockTableBuilder:
     to return different data per table.
     """
 
-    def __init__(self, table_name: str, tables_data: dict):
+    def __init__(self, table_name: str, tables_data: dict, insert_data: dict):
         self.table_name = table_name
         self.tables_data = tables_data
+        self.insert_data = insert_data
         self._mock = MagicMock()
+        self._operation = "select"
+
+    def select(self, *args, **kwargs):
+        self._operation = "select"
+        return self
+
+    def insert(self, *args, **kwargs):
+        self._operation = "insert"
+        return self
+
+    def update(self, *args, **kwargs):
+        self._operation = "update"
+        return self
+
+    def delete(self, *args, **kwargs):
+        self._operation = "delete"
+        return self
 
     def __getattr__(self, name):
         # Return self for chainable methods
         if name in [
-            "select",
-            "insert",
-            "update",
-            "delete",
             "eq",
             "neq",
             "gt",
@@ -108,7 +122,11 @@ class MockTableBuilder:
 
     def _execute(self):
         response = MagicMock()
-        response.data = self.tables_data.get(self.table_name, [])
+        # For insert operations, use insert_data if available
+        if self._operation == "insert" and self.table_name in self.insert_data:
+            response.data = self.insert_data.get(self.table_name, [])
+        else:
+            response.data = self.tables_data.get(self.table_name, [])
         response.count = len(response.data)
         return response
 
@@ -120,14 +138,18 @@ def mock_supabase():
 
     This fixture provides a fully mocked Supabase client that can be
     configured to return specific data for each test via tables_data dict.
+    Use _tables_data for select/update/delete and _insert_data for inserts.
     """
     mock_client = MagicMock()
 
     # Store data per table - tests can modify this
     mock_client._tables_data = {}
+    mock_client._insert_data = {}
 
     def table_factory(table_name: str):
-        return MockTableBuilder(table_name, mock_client._tables_data)
+        return MockTableBuilder(
+            table_name, mock_client._tables_data, mock_client._insert_data
+        )
 
     mock_client.table.side_effect = table_factory
 
