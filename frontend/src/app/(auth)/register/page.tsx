@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { register } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,12 +31,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      // await api.auth.register(email, password);
-      console.log('Register:', { email, password });
-
-      // Redirect to login
-      router.push('/login');
+      await register(email, password);
+      router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {

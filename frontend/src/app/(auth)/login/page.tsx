@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,11 +19,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      // await api.auth.login(email, password);
-      console.log('Login:', { email, password });
-
-      // Redirect to dashboard
+      await login(email, password);
       router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');

@@ -1,12 +1,15 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/authStore';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: HomeIcon },
   { href: '/agents', label: 'Agents', icon: AgentsIcon },
+  { href: '/reports', label: 'Reports', icon: ReportsIcon },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -16,6 +19,18 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, loadUser, logout } = useAuthStore();
+
+  // Load user on mount
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -53,9 +68,18 @@ export default function DashboardLayout({
           </div>
 
           {/* User Menu */}
-          <div className="flex items-center gap-4">
-            <button className="btn btn-ghost text-sm">
-              <UserIcon className="w-4 h-4" />
+          <div className="flex items-center gap-3">
+            {user && (
+              <span className="text-xs text-zinc-500 hidden sm:inline">
+                {user.email}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="btn btn-ghost text-sm py-1.5 px-3"
+              title="Sign out"
+            >
+              <LogoutIcon className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -106,6 +130,24 @@ function AgentsIcon({ className }: { className?: string }) {
   );
 }
 
+function ReportsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      />
+    </svg>
+  );
+}
+
 function SettingsIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -130,7 +172,7 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
-function UserIcon({ className }: { className?: string }) {
+function LogoutIcon({ className }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -142,7 +184,7 @@ function UserIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
-        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
       />
     </svg>
   );
