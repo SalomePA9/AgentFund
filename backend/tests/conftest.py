@@ -3,6 +3,8 @@ Pytest configuration and fixtures for AgentFund backend tests.
 
 This module provides shared fixtures, test utilities, and configuration
 for all backend tests including unit, integration, and API tests.
+
+Supports unit, integration, and API testing with mocked Supabase client.
 """
 
 import asyncio
