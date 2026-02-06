@@ -350,7 +350,12 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           cd backend
-          uvicorn main:app --host 0.0.0.0 --port 8000 &
+          # Test that imports work before starting server
+          python -c "from main import app; print('Import successful')" || (echo "Import failed" && exit 1)
+          # Start server with logging
+          uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+          UVICORN_PID=$!
+          echo "Started uvicorn with PID $UVICORN_PID"
           echo "Waiting for backend to be ready..."
           for i in {1..30}; do
             if curl -s http://localhost:8000/health > /dev/null; then
@@ -360,7 +365,11 @@ jobs:
             echo "Attempt $i: Backend not ready yet, waiting..."
             sleep 2
           done
-          curl -s http://localhost:8000/health || (echo "Backend failed to start" && exit 1)
+          if ! curl -s http://localhost:8000/health > /dev/null; then
+            echo "Backend failed to start. Uvicorn logs:"
+            cat uvicorn.log
+            exit 1
+          fi
 
       - name: Run E2E tests
         env:

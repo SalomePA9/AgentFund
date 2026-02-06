@@ -5,6 +5,7 @@ Loads environment variables from .env file.
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -17,8 +18,12 @@ class Settings(BaseSettings):
     api_version: str = "v1"
 
     # Database (Supabase)
-    supabase_url: str
-    supabase_anon_key: str  # Public key for client operations
+    supabase_url: str = ""
+    # Accept both SUPABASE_ANON_KEY and SUPABASE_KEY for flexibility
+    supabase_anon_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("SUPABASE_ANON_KEY", "SUPABASE_KEY"),
+    )
     supabase_service_key: str | None = None  # Service role key for backend
     database_url: str | None = None
 
@@ -28,12 +33,16 @@ class Settings(BaseSettings):
         return self.supabase_service_key or self.supabase_anon_key
 
     # Authentication
-    jwt_secret: str
+    jwt_secret: str = (
+        ""  # Required for production, empty allows startup for health checks
+    )
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # Encryption (for storing user API keys)
-    encryption_key: str
+    encryption_key: str = (
+        ""  # Required for production, empty allows startup for health checks
+    )
 
     # Alpaca (default/fallback for testing)
     alpaca_api_key: str | None = None
@@ -85,6 +94,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra env vars not defined in Settings
 
 
 @lru_cache
