@@ -1,3 +1,5 @@
-"""LLM integration components."""
+"""LLM integration components for AgentFund."""
 
-# LLM integration will be implemented in Phase 2, Week 2.2
+from llm.client import ClaudeClient, TokenUsage, get_claude_client
+
+__all__ = ["ClaudeClient", "TokenUsage", "get_claude_client"]
