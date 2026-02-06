@@ -1,9 +1,10 @@
 """
 Chat API endpoints.
 
-Handles agent chat conversations.
+Handles agent chat conversations with LLM-powered responses.
 """
 
+import logging
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -14,6 +15,9 @@ from supabase import Client
 
 from api.auth import get_current_user
 from database import get_db
+from llm import ChatContext, ChatMessage as LLMChatMessage, get_chat_handler
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -53,6 +57,92 @@ class ChatHistoryResponse(BaseModel):
     data: list[ChatMessage]
     total: int
     has_more: bool
+
+
+# ---------------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------------
+
+
+def _build_chat_context(agent: dict, db: Client) -> ChatContext:
+    """Build chat context from agent data."""
+    agent_id = agent["id"]
+
+    # Get top positions
+    positions_result = (
+        db.table("positions")
+        .select("ticker, shares, entry_price, current_price, unrealized_pnl_pct")
+        .eq("agent_id", agent_id)
+        .eq("status", "open")
+        .order("unrealized_pnl_pct", desc=True)
+        .limit(5)
+        .execute()
+    )
+
+    # Get recent activity
+    activity_result = (
+        db.table("agent_activity")
+        .select("activity_type, ticker, details")
+        .eq("agent_id", agent_id)
+        .order("created_at", desc=True)
+        .limit(3)
+        .execute()
+    )
+
+    return ChatContext(
+        agent_id=agent_id,
+        agent_name=agent["name"],
+        persona=agent.get("persona", "analytical"),
+        strategy_type=agent.get("strategy_type", "momentum"),
+        status=agent.get("status", "active"),
+        total_value=float(agent.get("total_value", 0) or 0),
+        allocated_capital=float(agent.get("allocated_capital", 0) or 0),
+        daily_return_pct=float(agent.get("daily_return_pct", 0) or 0),
+        total_return_pct=_calculate_total_return(agent),
+        positions_count=agent.get("positions_count", 0) or 0,
+        top_positions=positions_result.data or [],
+        recent_activities=activity_result.data or [],
+        sharpe_ratio=agent.get("sharpe_ratio"),
+        win_rate=agent.get("win_rate"),
+        max_drawdown=agent.get("max_drawdown"),
+    )
+
+
+def _calculate_total_return(agent: dict) -> float:
+    """Calculate total return percentage."""
+    total_value = float(agent.get("total_value", 0) or 0)
+    allocated = float(agent.get("allocated_capital", 0) or 0)
+    if allocated > 0:
+        return ((total_value / allocated) - 1) * 100
+    return 0.0
+
+
+def _get_conversation_history(
+    db: Client, agent_id: str, limit: int = 10
+) -> list[LLMChatMessage]:
+    """Get recent conversation history for context."""
+    result = (
+        db.table("agent_chats")
+        .select("role, message, created_at")
+        .eq("agent_id", agent_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+
+    # Convert to LLM ChatMessage format and reverse to chronological order
+    messages = []
+    for msg in reversed(result.data or []):
+        role = "assistant" if msg["role"] == "agent" else "user"
+        messages.append(
+            LLMChatMessage(
+                role=role,
+                content=msg["message"],
+                timestamp=datetime.fromisoformat(msg["created_at"].replace("Z", "+00:00")),
+            )
+        )
+
+    return messages
 
 
 # ---------------------------------------------------------------------------
@@ -150,10 +240,28 @@ async def send_message(
 
     user_message = user_msg_result.data[0]
 
-    # Generate agent response
-    # This will be implemented with LLM integration in Phase 2
-    # For now, return a placeholder response
-    agent_response_text = _generate_placeholder_response(agent, request.message)
+    # Build context and get conversation history
+    context = _build_chat_context(agent, db)
+    history = _get_conversation_history(db, str(agent_id))
+
+    # Generate agent response using LLM
+    chat_handler = get_chat_handler()
+    try:
+        llm_response = chat_handler.generate_response(
+            context=context,
+            user_message=request.message,
+            history=history,
+        )
+        agent_response_text = llm_response.content
+        context_used = llm_response.context_used
+    except Exception as e:
+        logger.error(f"LLM response generation failed: {e}")
+        # Fallback to simple response
+        agent_response_text = (
+            f"I'm {agent['name']}, your {agent['strategy_type'].replace('_', ' ')} agent. "
+            f"I encountered an issue processing your message. Please try again."
+        )
+        context_used = {"error": str(e)}
 
     # Save agent response
     agent_msg_result = (
@@ -163,11 +271,7 @@ async def send_message(
                 "agent_id": str(agent_id),
                 "role": "agent",
                 "message": agent_response_text,
-                "context_used": {
-                    "agent_name": agent["name"],
-                    "persona": agent["persona"],
-                    "strategy_type": agent["strategy_type"],
-                },
+                "context_used": context_used,
             }
         )
         .execute()
@@ -210,35 +314,3 @@ async def clear_chat_history(
         )
 
     db.table("agent_chats").delete().eq("agent_id", str(agent_id)).execute()
-
-
-# ---------------------------------------------------------------------------
-# Placeholder Response Generator
-# ---------------------------------------------------------------------------
-
-
-def _generate_placeholder_response(agent: dict, user_message: str) -> str:
-    """
-    Generate a placeholder response until LLM integration is complete.
-    This will be replaced with actual Claude API calls in Phase 2.
-    """
-    name = agent["name"]
-    persona = agent["persona"]
-    strategy = agent["strategy_type"]
-
-    # Simple placeholder responses based on persona
-    persona_intros = {
-        "analytical": f"Based on my analysis as {name}",
-        "aggressive": "Let me be direct with you",
-        "conservative": "Taking a measured approach",
-        "teacher": "Great question! Let me explain",
-        "concise": "Here's the key point",
-    }
-
-    intro = persona_intros.get(persona, f"As {name}")
-
-    return (
-        f"{intro}, I'm currently running a {strategy.replace('_', ' ')} strategy. "
-        f"The full chat functionality with personalized responses will be available soon. "
-        f"In the meantime, you can view my positions and daily reports for detailed insights."
-    )
