@@ -10,7 +10,7 @@ const nextConfig = {
 
   // Image optimization configuration
   images: {
-    domains: [],
+    remotePatterns: [],
   },
 
   // Headers for security
