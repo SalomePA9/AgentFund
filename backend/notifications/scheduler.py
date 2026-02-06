@@ -21,11 +21,7 @@ from notifications.preferences import (
     PreferencesManager,
 )
 from notifications.templates.daily_report import DailyReportData, DailyReportTemplate
-from notifications.templates.team_summary import (
-    AgentSummary,
-    TeamSummaryData,
-    TeamSummaryTemplate,
-)
+from notifications.templates.team_summary import TeamSummaryData, TeamSummaryTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +166,12 @@ class TimezoneHelper:
             List of users due for delivery
         """
         result = []
+
+        # Ensure current_utc is timezone-aware
+        utc = ZoneInfo("UTC")
+        if current_utc.tzinfo is None:
+            current_utc = current_utc.replace(tzinfo=utc)
+
         window_start = current_utc - timedelta(minutes=window_minutes // 2)
         window_end = current_utc + timedelta(minutes=window_minutes // 2)
 
@@ -179,6 +181,10 @@ class TimezoneHelper:
                 prefs.timezone,
                 current_utc,
             )
+
+            # Ensure delivery_utc is also timezone-aware for comparison
+            if delivery_utc.tzinfo is None:
+                delivery_utc = delivery_utc.replace(tzinfo=utc)
 
             # Check if within window
             if window_start <= delivery_utc <= window_end:
@@ -325,7 +331,9 @@ class NotificationScheduler:
 
         return result.success
 
-    def _replace_placeholders(self, content: str, prefs: NotificationPreferences) -> str:
+    def _replace_placeholders(
+        self, content: str, prefs: NotificationPreferences
+    ) -> str:
         """Replace template placeholders with actual URLs."""
         # These would be configured in settings
         dashboard_url = "https://app.agentfund.ai"

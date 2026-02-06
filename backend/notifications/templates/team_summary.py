@@ -7,7 +7,6 @@ providing a portfolio-wide view.
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
 
 from notifications.templates.base import BaseTemplate
 
@@ -154,7 +153,8 @@ class TeamSummaryTemplate(BaseTemplate):
         cards = []
 
         if data.best_agent:
-            cards.append(f"""
+            cards.append(
+                f"""
                 <div style="flex: 1; min-width: 200px; padding: 16px; background-color: rgba(34, 197, 94, 0.05); border-radius: 8px; border: 1px solid rgba(34, 197, 94, 0.2);">
                     <div style="font-size: 12px; color: {cls.COLORS['success']}; margin-bottom: 4px;">BEST PERFORMER</div>
                     <div style="font-weight: 600; margin-bottom: 4px;">{data.best_agent.agent_name}</div>
@@ -162,10 +162,12 @@ class TeamSummaryTemplate(BaseTemplate):
                         {data.best_agent.daily_return_pct:+.2f}%
                     </div>
                 </div>
-            """)
+            """
+            )
 
         if data.worst_agent:
-            cards.append(f"""
+            cards.append(
+                f"""
                 <div style="flex: 1; min-width: 200px; padding: 16px; background-color: rgba(239, 68, 68, 0.05); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2);">
                     <div style="font-size: 12px; color: {cls.COLORS['danger']}; margin-bottom: 4px;">NEEDS ATTENTION</div>
                     <div style="font-weight: 600; margin-bottom: 4px;">{data.worst_agent.agent_name}</div>
@@ -173,7 +175,8 @@ class TeamSummaryTemplate(BaseTemplate):
                         {data.worst_agent.daily_return_pct:+.2f}%
                     </div>
                 </div>
-            """)
+            """
+            )
 
         return f"""
         <div class="card">
@@ -198,12 +201,13 @@ class TeamSummaryTemplate(BaseTemplate):
         rows = []
         for agent in sorted_agents:
             status_badge = (
-                f'<span class="badge badge-success">Active</span>'
+                '<span class="badge badge-success">Active</span>'
                 if agent.status == "active"
                 else f'<span class="badge badge-warning">{agent.status.title()}</span>'
             )
 
-            rows.append(f"""
+            rows.append(
+                f"""
                 <tr>
                     <td>
                         <a href="{{{{dashboard_url}}}}/agents/{agent.agent_id}"
@@ -225,7 +229,8 @@ class TeamSummaryTemplate(BaseTemplate):
                         {cls.format_percent(agent.total_return_pct)}
                     </td>
                 </tr>
-            """)
+            """
+            )
 
         return f"""
         <div class="card">

@@ -4,11 +4,7 @@ Notifications package for AgentFund.
 Provides email delivery, in-app notifications, and notification preferences.
 """
 
-from notifications.email_client import (
-    EmailClient,
-    EmailResult,
-    get_email_client,
-)
+from notifications.email_client import EmailClient, EmailResult, get_email_client
 from notifications.in_app import (
     InAppNotification,
     InAppNotificationManager,

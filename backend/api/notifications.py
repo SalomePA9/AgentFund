@@ -310,14 +310,14 @@ async def unsubscribe(
                 return {
                     "message": f"Unsubscribed from {request.notification_type} notifications"
                 }
+            # Type not in update map
+            raise HTTPException(status_code=400, detail="Invalid notification type")
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid notification type")
-    else:
-        # Unsubscribe from all emails
-        manager.update(prefs.user_id, {"email_enabled": False})
-        return {"message": "Unsubscribed from all email notifications"}
 
-    return {"message": "Unsubscribe request processed"}
+    # Unsubscribe from all emails
+    manager.update(prefs.user_id, {"email_enabled": False})
+    return {"message": "Unsubscribed from all email notifications"}
 
 
 @router.get("/unsubscribe/{token}")
@@ -360,7 +360,6 @@ async def unsubscribe_page(
 async def send_welcome_email(
     request: SendWelcomeRequest,
     current_user: dict = Depends(get_current_user),
-    db: Client = Depends(get_db),
 ) -> dict[str, Any]:
     """
     Send a welcome email (development/testing endpoint).
