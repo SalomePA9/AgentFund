@@ -128,7 +128,7 @@ export default function AgentsPage() {
                     <div className="flex items-center justify-end gap-1">
                       {agent.status === 'active' && (
                         <button
-                          onClick={() => pauseAgent(agent.id)}
+                          onClick={() => { pauseAgent(agent.id).catch(() => {}); }}
                           className="btn btn-ghost text-xs py-1"
                         >
                           Pause
@@ -136,7 +136,7 @@ export default function AgentsPage() {
                       )}
                       {agent.status === 'paused' && (
                         <button
-                          onClick={() => resumeAgent(agent.id)}
+                          onClick={() => { resumeAgent(agent.id).catch(() => {}); }}
                           className="btn btn-ghost text-xs py-1"
                         >
                           Resume

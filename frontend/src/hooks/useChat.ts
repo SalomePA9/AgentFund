@@ -13,14 +13,16 @@ export function useChat(agentId: string) {
   const [isSending, setIsSending] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
 
   const fetchHistory = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const data = await api.chat.getHistory(agentId);
-      setMessages(data.data.reverse());
+      const reversed = [...data.data].reverse();
+      messagesRef.current = reversed;
+      setMessages(reversed);
       setHasMore(data.has_more);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load chat history');
@@ -68,17 +70,22 @@ export function useChat(agentId: string) {
   );
 
   const loadMore = useCallback(async () => {
-    if (!hasMore || messages.length === 0) return;
+    if (!hasMore || messagesRef.current.length === 0) return;
 
     try {
-      const oldest = messages[0];
+      const oldest = messagesRef.current[0];
       const data = await api.chat.getHistory(agentId, 50, oldest.created_at);
-      setMessages((prev) => [...data.data.reverse(), ...prev]);
+      const older = [...data.data].reverse();
+      setMessages((prev) => {
+        const merged = [...older, ...prev];
+        messagesRef.current = merged;
+        return merged;
+      });
       setHasMore(data.has_more);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load more messages');
     }
-  }, [agentId, hasMore, messages]);
+  }, [agentId, hasMore]);
 
   const clearHistory = useCallback(async () => {
     try {
@@ -98,6 +105,5 @@ export function useChat(agentId: string) {
     sendMessage,
     loadMore,
     clearHistory,
-    messagesEndRef,
   };
 }

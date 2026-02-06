@@ -36,8 +36,6 @@ export function StatusBadge({ status }: { status: string }) {
       ? 'success'
       : status === 'paused'
       ? 'warning'
-      : status === 'stopped'
-      ? 'error'
       : 'neutral';
 
   return <Badge variant={variant}>{status}</Badge>;

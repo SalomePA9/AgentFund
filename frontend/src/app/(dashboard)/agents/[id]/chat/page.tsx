@@ -12,7 +12,7 @@ import type { ChatMessage } from '@/types';
 export default function AgentChatPage() {
   const params = useParams();
   const agentId = params.id as string;
-  const { agent, isLoading: agentLoading } = useAgent(agentId);
+  const { agent, isLoading: agentLoading, error: agentError } = useAgent(agentId);
   const {
     messages,
     isLoading: chatLoading,
@@ -27,12 +27,18 @@ export default function AgentChatPage() {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevMessageCountRef = useRef(0);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom only on new messages (not on loadMore which prepends)
   useEffect(() => {
-    if (messagesEndRef.current) {
+    const isNewMessage = messages.length > prevMessageCountRef.current;
+    const lastMessage = messages[messages.length - 1];
+    const isRecentMessage = lastMessage && !lastMessage.id.startsWith('older-');
+
+    if (isNewMessage && isRecentMessage && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
+    prevMessageCountRef.current = messages.length;
   }, [messages]);
 
   const handleSend = async () => {
@@ -51,6 +57,7 @@ export default function AgentChatPage() {
   };
 
   if (agentLoading || chatLoading) return <PageLoading />;
+  if (agentError) return <ErrorMessage message={agentError} />;
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
@@ -118,7 +125,7 @@ export default function AgentChatPage() {
               {quickPrompts.map((prompt) => (
                 <button
                   key={prompt}
-                  onClick={() => sendMessage(prompt)}
+                  onClick={() => { setInput(''); sendMessage(prompt); }}
                   className="btn btn-secondary text-xs py-1.5"
                 >
                   {prompt}

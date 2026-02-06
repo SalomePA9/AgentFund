@@ -94,7 +94,7 @@ export function AllocationChart({ data, height = 250 }: AllocationChartProps) {
                 {formatCurrency(item.value)}
               </span>
               <span className="text-zinc-500 ml-2 text-xs">
-                {((item.value / total) * 100).toFixed(1)}%
+                {total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0'}%
               </span>
             </div>
           </div>

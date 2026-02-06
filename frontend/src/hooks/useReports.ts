@@ -14,7 +14,13 @@ export function useAgentReports(agentId: string, perPage = 10) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Reset page when agentId changes
+  useEffect(() => {
+    setPage(1);
+  }, [agentId]);
+
   const fetchReports = useCallback(async () => {
+    if (!agentId) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -51,11 +57,14 @@ export function useAgentReports(agentId: string, perPage = 10) {
  */
 export function useReport(agentId: string, date: string) {
   const [report, setReport] = useState<DailyReport | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchReport = useCallback(async () => {
-    if (!date) return;
+    if (!date || !agentId) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {

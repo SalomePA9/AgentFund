@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAgents } from '@/hooks/useAgents';
 import { api } from '@/lib/api';
 import {
@@ -9,7 +8,6 @@ import {
   ErrorMessage,
   EmptyState,
   StatCard,
-  StatusBadge,
 } from '@/components/ui';
 import {
   formatCurrency,
@@ -29,34 +27,36 @@ export default function ReportsPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
+  const selectedAgentRef = useRef<string | null>(null);
+
   const fetchReports = useCallback(async (agentId: string, pageNum: number) => {
     setIsLoading(true);
     setError(null);
     try {
       const data = await api.reports.listAgentReports(agentId, pageNum, 10);
-      setReports(data.data);
-      setTotalPages(Math.ceil(data.total / 10));
+      // Only update if this agent is still selected (avoid race condition)
+      if (selectedAgentRef.current === agentId) {
+        setReports(data.data);
+        setTotalPages(Math.ceil(data.total / 10));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load reports');
+      if (selectedAgentRef.current === agentId) {
+        setError(err instanceof Error ? err.message : 'Failed to load reports');
+      }
     } finally {
-      setIsLoading(false);
+      if (selectedAgentRef.current === agentId) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
-  // Load reports when agent changes
+  // Load reports when agent or page changes (single effect to avoid race condition)
   useEffect(() => {
     if (selectedAgent) {
-      setPage(1);
-      fetchReports(selectedAgent.id, 1);
-    }
-  }, [selectedAgent, fetchReports]);
-
-  // Load reports when page changes
-  useEffect(() => {
-    if (selectedAgent && page > 0) {
+      selectedAgentRef.current = selectedAgent.id;
       fetchReports(selectedAgent.id, page);
     }
-  }, [page, selectedAgent, fetchReports]);
+  }, [selectedAgent, page, fetchReports]);
 
   // Auto-select first agent
   useEffect(() => {
@@ -96,6 +96,7 @@ export default function ReportsPage() {
             onClick={() => {
               setSelectedAgent(agent);
               setSelectedReport(null);
+              setPage(1);
             }}
             className={`btn text-sm ${
               selectedAgent?.id === agent.id ? 'btn-secondary' : 'btn-ghost'

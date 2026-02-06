@@ -27,8 +27,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const data = await api.auth.login(email, password);
-      set({ token: data.access_token, isLoading: false });
-      await get().loadUser();
+      set({ token: data.access_token });
+      try {
+        await get().loadUser();
+      } catch {
+        // loadUser sets its own state; don't let it break login flow
+      }
     } catch (err) {
       set({
         isLoading: false,

@@ -25,7 +25,7 @@ export default function DashboardPage() {
   if (error) return <ErrorMessage message={error} onRetry={() => { refetchAgents(); refetchSummary(); }} />;
 
   const activeAgents = agents.filter((a) => a.status === 'active').length;
-  const totalPositions = agents.reduce((sum, a) => sum + (a.total_value ? 1 : 0), 0);
+  const fundedAgents = agents.filter((a) => a.total_value && a.total_value > 0).length;
 
   return (
     <div className="space-y-8">
@@ -56,9 +56,9 @@ export default function DashboardPage() {
           subtitle={`of ${agents.length} total`}
         />
         <StatCard
-          label="Open Positions"
-          value={String(totalPositions)}
-          subtitle="across all agents"
+          label="Funded Agents"
+          value={String(fundedAgents)}
+          subtitle="with open positions"
         />
       </div>
 

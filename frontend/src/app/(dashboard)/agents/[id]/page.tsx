@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAgent } from '@/hooks/useAgents';
@@ -50,8 +50,12 @@ export default function AgentDetailPage() {
   const closedPositions = positions.filter((p) => p.status !== 'open');
 
   const handleToggle = async () => {
-    if (agent.status === 'active') await pause();
-    else if (agent.status === 'paused') await resume();
+    try {
+      if (agent.status === 'active') await pause();
+      else if (agent.status === 'paused') await resume();
+    } catch {
+      // Error is already set in the hook
+    }
   };
 
   return (
@@ -553,7 +557,11 @@ function PerformanceTab({
   }
 
   // Placeholder performance data for chart (would come from a dedicated endpoint)
-  const perfData = generatePlaceholderPerfData(agent);
+  // Memoized to prevent flicker from regeneration on re-render
+  const perfData = useMemo(
+    () => generatePlaceholderPerfData(agent),
+    [agent.allocated_capital, agent.total_value, agent.start_date]
+  );
 
   return (
     <div className="space-y-6">
@@ -727,13 +735,20 @@ function generatePlaceholderPerfData(agent: { allocated_capital: number; total_v
   const numPoints = Math.min(days, 90);
   const dailyReturn = numPoints > 0 ? (endValue / startValue - 1) / numPoints : 0;
 
+  // Deterministic seed based on start value to avoid flicker on re-render
+  let seed = startValue;
+  const seededRandom = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+
   const data = [];
   let value = startValue;
 
   for (let i = 0; i <= numPoints; i++) {
     const date = new Date(start);
     date.setDate(date.getDate() + Math.floor((i / numPoints) * days));
-    const noise = 1 + (Math.random() - 0.5) * 0.02;
+    const noise = 1 + (seededRandom() - 0.5) * 0.02;
     value = value * (1 + dailyReturn) * noise;
     data.push({
       date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),

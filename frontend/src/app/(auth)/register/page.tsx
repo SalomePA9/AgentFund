@@ -129,13 +129,13 @@ export default function RegisterPage() {
 
           <p className="mt-4 text-center text-xs text-zinc-600">
             By creating an account, you agree to our{' '}
-            <Link href="/terms" className="underline">
+            <span className="underline cursor-pointer">
               Terms of Service
-            </Link>{' '}
+            </span>{' '}
             and{' '}
-            <Link href="/privacy" className="underline">
+            <span className="underline cursor-pointer">
               Privacy Policy
-            </Link>
+            </span>
             .
           </p>
         </div>

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { InlineLoading, ErrorMessage } from '@/components/ui';
 import { formatCurrency, formatStrategyType } from '@/lib/utils';
@@ -272,7 +271,11 @@ export default function NewAgentPage() {
             <button onClick={() => setStep(1)} className="btn btn-secondary">
               Back
             </button>
-            <button onClick={() => setStep(3)} className="btn btn-primary">
+            <button
+              onClick={() => setStep(3)}
+              className="btn btn-primary"
+              disabled={formData.allocated_capital < 1000}
+            >
               Continue
             </button>
           </div>

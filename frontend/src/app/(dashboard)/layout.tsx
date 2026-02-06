@@ -20,17 +20,33 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, loadUser, logout } = useAuthStore();
+  const { user, isLoading, isAuthenticated, loadUser, logout } = useAuthStore();
 
   // Load user on mount
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
+  // Redirect to login if not authenticated (after loading completes)
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push('/login');
+    }
+  }, [isLoading, isAuthenticated, router]);
+
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
+
+  // Show nothing while checking auth
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-zinc-600 border-t-accent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/lib/api';
-import { PageLoading, ErrorMessage, InlineLoading } from '@/components/ui';
+import { ErrorMessage, InlineLoading } from '@/components/ui';
 import type { BrokerStatus } from '@/types';
 
 export default function SettingsPage() {
@@ -15,7 +15,7 @@ export default function SettingsPage() {
     email_alerts: true,
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [settingsMessage, setSettingsMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   const [brokerStatus, setBrokerStatus] = useState<BrokerStatus | null>(null);
   const [brokerLoading, setBrokerLoading] = useState(true);
@@ -62,10 +62,10 @@ export default function SettingsPage() {
     try {
       await api.auth.updateSettings(settings);
       await loadUser();
-      setSettingsMessage('Settings saved');
+      setSettingsMessage({ text: 'Settings saved', isError: false });
       setTimeout(() => setSettingsMessage(null), 3000);
     } catch (err) {
-      setSettingsMessage(err instanceof Error ? err.message : 'Failed to save');
+      setSettingsMessage({ text: err instanceof Error ? err.message : 'Failed to save', isError: true });
     } finally {
       setSettingsSaving(false);
     }
@@ -303,7 +303,9 @@ export default function SettingsPage() {
               {settingsSaving ? <InlineLoading text="Saving..." /> : 'Save Preferences'}
             </button>
             {settingsMessage && (
-              <span className="text-sm text-success">{settingsMessage}</span>
+              <span className={`text-sm ${settingsMessage.isError ? 'text-error' : 'text-success'}`}>
+                {settingsMessage.text}
+              </span>
             )}
           </div>
         </div>
@@ -357,6 +359,8 @@ function Toggle({
 }) {
   return (
     <button
+      role="switch"
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={`relative w-11 h-6 rounded-full transition-colors ${
         checked ? 'bg-accent' : 'bg-zinc-600'

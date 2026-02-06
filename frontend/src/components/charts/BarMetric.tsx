@@ -72,7 +72,7 @@ export function BarMetric({
           ]}
         />
         {hasNegative && <ReferenceLine y={0} stroke="#3F3F46" />}
-        <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+        <Bar dataKey="value" radius={hasNegative ? 0 : [4, 4, 0, 0]}>
           {data.map((entry, index) => (
             <Cell
               key={`cell-${index}`}

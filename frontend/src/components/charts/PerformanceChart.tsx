@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { formatCurrency, formatPercent } from '@/lib/utils';
+import { formatCurrency, formatPercent, formatCompactNumber } from '@/lib/utils';
 
 interface DataPoint {
   date: string;
@@ -62,7 +62,7 @@ export function PerformanceChart({
           axisLine={false}
           tickFormatter={(v) =>
             mode === 'value'
-              ? `$${(v / 1000).toFixed(0)}k`
+              ? `$${formatCompactNumber(v)}`
               : `${v.toFixed(1)}%`
           }
         />

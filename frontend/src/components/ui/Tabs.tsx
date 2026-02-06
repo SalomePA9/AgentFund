@@ -16,10 +16,12 @@ interface TabsProps {
 
 export function Tabs({ tabs, activeTab, onChange }: TabsProps) {
   return (
-    <div className="flex gap-1 border-b border-border">
+    <div role="tablist" className="flex gap-1 border-b border-border">
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          role="tab"
+          aria-selected={activeTab === tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
             'px-4 py-3 text-sm font-medium border-b-2 transition-colors',
