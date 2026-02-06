@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { register } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,12 +31,8 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      // await api.auth.register(email, password);
-      console.log('Register:', { email, password });
-
-      // Redirect to login
-      router.push('/login');
+      await register(email, password);
+      router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -131,13 +129,13 @@ export default function RegisterPage() {
 
           <p className="mt-4 text-center text-xs text-zinc-600">
             By creating an account, you agree to our{' '}
-            <Link href="/terms" className="underline">
+            <span className="underline cursor-pointer">
               Terms of Service
-            </Link>{' '}
+            </span>{' '}
             and{' '}
-            <Link href="/privacy" className="underline">
+            <span className="underline cursor-pointer">
               Privacy Policy
-            </Link>
+            </span>
             .
           </p>
         </div>

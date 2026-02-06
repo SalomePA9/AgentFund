@@ -1,55 +1,32 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { formatCurrency, formatPercent, getValueColorClass } from '@/lib/utils';
-
-// Placeholder data - will be replaced with API calls
-const mockAgents = [
-  {
-    id: '1',
-    name: 'Alpha Momentum',
-    strategy_type: 'momentum',
-    status: 'active',
-    total_value: 52430.0,
-    total_return_pct: 4.86,
-    daily_return_pct: 0.32,
-    positions_count: 8,
-    days_remaining: 142,
-    today_summary:
-      'Solid day with tech momentum continuing. Added NVDA position on breakout.',
-  },
-  {
-    id: '2',
-    name: 'Value Hunter',
-    strategy_type: 'quality_value',
-    status: 'active',
-    total_value: 48750.0,
-    total_return_pct: -2.5,
-    daily_return_pct: -0.15,
-    positions_count: 6,
-    days_remaining: 89,
-    today_summary:
-      'Patience required. Value stocks underperforming but fundamentals remain strong.',
-  },
-  {
-    id: '3',
-    name: 'Dividend Compounder',
-    strategy_type: 'dividend_growth',
-    status: 'paused',
-    total_value: 25000.0,
-    total_return_pct: 1.2,
-    daily_return_pct: 0.0,
-    positions_count: 4,
-    days_remaining: 365,
-    today_summary: 'Agent paused by user.',
-  },
-];
-
-const totalValue = mockAgents.reduce((sum, a) => sum + a.total_value, 0);
-const totalAllocated = 125000;
-const totalReturn = ((totalValue / totalAllocated) - 1) * 100;
+import { useAgents, useTeamSummary } from '@/hooks/useAgents';
+import { StatCard, PageLoading, ErrorMessage, EmptyState, StatusBadge } from '@/components/ui';
+import {
+  formatCurrency,
+  formatPercent,
+  formatDate,
+  formatStrategyType,
+  getValueColorClass,
+  daysRemaining,
+} from '@/lib/utils';
+import type { Agent } from '@/types';
 
 export default function DashboardPage() {
+  const { agents, isLoading: agentsLoading, error: agentsError, refetch: refetchAgents, pauseAgent, resumeAgent } = useAgents();
+  const { summary, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useTeamSummary();
+
+  const isLoading = agentsLoading || summaryLoading;
+  const error = agentsError || summaryError;
+
+  if (isLoading) return <PageLoading />;
+  if (error) return <ErrorMessage message={error} onRetry={() => { refetchAgents(); refetchSummary(); }} />;
+
+  const activeAgents = agents.filter((a) => a.status === 'active').length;
+  const fundedAgents = agents.filter((a) => a.total_value && a.total_value > 0).length;
+
   return (
     <div className="space-y-8">
       {/* Page Header */}
@@ -64,17 +41,52 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Portfolio Value"
-          value={formatCurrency(totalValue)}
-          change={totalReturn}
+          value={formatCurrency(summary?.total_portfolio_value ?? 0)}
+          change={summary?.total_return_pct}
         />
         <StatCard
           label="Today's Change"
-          value={formatCurrency(totalValue * 0.0015, { showSign: true })}
-          change={0.15}
+          value={formatCurrency(summary?.total_daily_change ?? 0, { showSign: true })}
+          change={summary?.total_daily_return_pct}
+          changeLabel="today"
         />
-        <StatCard label="Active Agents" value="2" subtitle="of 3 total" />
-        <StatCard label="Open Positions" value="18" subtitle="across all agents" />
+        <StatCard
+          label="Active Agents"
+          value={String(activeAgents)}
+          subtitle={`of ${agents.length} total`}
+        />
+        <StatCard
+          label="Funded Agents"
+          value={String(fundedAgents)}
+          subtitle="with open positions"
+        />
       </div>
+
+      {/* Recent Actions */}
+      {summary?.recent_actions && summary.recent_actions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold">Recent Activity</h2>
+          <div className="card p-0 divide-y divide-border">
+            {summary.recent_actions.slice(0, 5).map((action, i) => (
+              <div key={i} className="px-6 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <ActivityIcon type={action.activity_type} />
+                  <div>
+                    <span className="text-sm font-medium">{action.agent_name}</span>
+                    <span className="text-zinc-400 text-sm ml-2">
+                      {action.activity_type.replace(/_/g, ' ')}
+                      {action.ticker && ` ${action.ticker}`}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs text-zinc-500">
+                  {formatDate(action.created_at, { format: 'relative' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Agents Section */}
       <div className="space-y-4">
@@ -85,56 +97,57 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        <div className="space-y-4">
-          {mockAgents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} />
-          ))}
-        </div>
+        {agents.length === 0 ? (
+          <EmptyState
+            title="No agents yet"
+            description="Create your first trading agent to get started."
+            actionLabel="+ Create Agent"
+            actionHref="/agents/new"
+          />
+        ) : (
+          <div className="space-y-4">
+            {agents.map((agent) => (
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                onPause={pauseAgent}
+                onResume={resumeAgent}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// Stat Card Component
-function StatCard({
-  label,
-  value,
-  change,
-  subtitle,
-}: {
-  label: string;
-  value: string;
-  change?: number;
-  subtitle?: string;
-}) {
-  return (
-    <div className="card">
-      <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">
-        {label}
-      </div>
-      <div className="text-2xl font-semibold text-number">{value}</div>
-      {change !== undefined && (
-        <div className={`text-sm mt-1 ${getValueColorClass(change)}`}>
-          {formatPercent(change)}
-        </div>
-      )}
-      {subtitle && <div className="text-sm text-zinc-500 mt-1">{subtitle}</div>}
-    </div>
-  );
-}
-
-// Agent Card Component
 function AgentCard({
   agent,
+  onPause,
+  onResume,
 }: {
-  agent: (typeof mockAgents)[0];
+  agent: Agent;
+  onPause: (id: string) => Promise<Agent>;
+  onResume: (id: string) => Promise<Agent>;
 }) {
-  const statusColors = {
-    active: 'bg-success',
-    paused: 'bg-warning',
-    stopped: 'bg-error',
-    completed: 'bg-zinc-500',
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const handleToggleStatus = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActionLoading(true);
+    try {
+      if (agent.status === 'active') {
+        await onPause(agent.id);
+      } else if (agent.status === 'paused') {
+        await onResume(agent.id);
+      }
+    } finally {
+      setActionLoading(false);
+    }
   };
+
+  const days = agent.end_date ? daysRemaining(agent.end_date) : null;
 
   return (
     <Link href={`/agents/${agent.id}`} className="block">
@@ -142,17 +155,18 @@ function AgentCard({
         <div className="flex items-start justify-between">
           {/* Left: Agent Info */}
           <div className="flex items-start gap-3">
-            <div
-              className={`w-3 h-3 rounded-full mt-1.5 ${
-                statusColors[agent.status as keyof typeof statusColors]
-              }`}
-            />
+            <div className="mt-1">
+              <StatusDot status={agent.status} />
+            </div>
             <div>
-              <h3 className="font-semibold text-lg">{agent.name}</h3>
-              <p className="text-sm text-zinc-500">
-                {agent.strategy_type.replace(/_/g, ' ')} •{' '}
-                {agent.positions_count} positions • {agent.days_remaining} days
-                remaining
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-lg">{agent.name}</h3>
+                <StatusBadge status={agent.status} />
+              </div>
+              <p className="text-sm text-zinc-500 mt-0.5">
+                {formatStrategyType(agent.strategy_type)}
+                {agent.persona && ` · ${agent.persona}`}
+                {days !== null && ` · ${days} days remaining`}
               </p>
             </div>
           </div>
@@ -165,27 +179,110 @@ function AgentCard({
             <div className={`text-sm ${getValueColorClass(agent.total_return_pct)}`}>
               {formatPercent(agent.total_return_pct)}
             </div>
+            {agent.daily_return_pct !== null && (
+              <div className={`text-xs ${getValueColorClass(agent.daily_return_pct)}`}>
+                {formatPercent(agent.daily_return_pct)} today
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Today's Summary */}
-        <div className="mt-4 p-3 bg-background rounded-lg">
-          <p className="text-sm text-zinc-400 italic">
-            &ldquo;{agent.today_summary}&rdquo;
-          </p>
+        {/* Stats Row */}
+        <div className="mt-4 grid grid-cols-4 gap-4 px-2">
+          <MiniStat label="Capital" value={formatCurrency(agent.allocated_capital)} />
+          <MiniStat label="Cash" value={formatCurrency(agent.cash_balance)} />
+          <MiniStat
+            label="Sharpe"
+            value={agent.sharpe_ratio?.toFixed(2) ?? '-'}
+          />
+          <MiniStat
+            label="Win Rate"
+            value={agent.win_rate_pct !== null ? `${agent.win_rate_pct}%` : '-'}
+          />
         </div>
 
         {/* Quick Actions */}
         <div className="mt-4 flex gap-2">
-          <button className="btn btn-secondary text-xs py-1.5">View</button>
-          <button className="btn btn-secondary text-xs py-1.5">Chat</button>
-          {agent.status === 'active' ? (
-            <button className="btn btn-ghost text-xs py-1.5">Pause</button>
-          ) : (
-            <button className="btn btn-ghost text-xs py-1.5">Resume</button>
+          <Link
+            href={`/agents/${agent.id}`}
+            className="btn btn-secondary text-xs py-1.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View
+          </Link>
+          <Link
+            href={`/agents/${agent.id}/chat`}
+            className="btn btn-secondary text-xs py-1.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Chat
+          </Link>
+          {(agent.status === 'active' || agent.status === 'paused') && (
+            <button
+              className="btn btn-ghost text-xs py-1.5"
+              onClick={handleToggleStatus}
+              disabled={actionLoading}
+            >
+              {actionLoading
+                ? '...'
+                : agent.status === 'active'
+                ? 'Pause'
+                : 'Resume'}
+            </button>
           )}
         </div>
       </div>
     </Link>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="text-sm font-medium text-number">{value}</div>
+    </div>
+  );
+}
+
+function StatusDot({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    active: 'bg-success',
+    paused: 'bg-warning',
+    stopped: 'bg-error',
+    completed: 'bg-zinc-500',
+  };
+
+  return (
+    <div className={`w-3 h-3 rounded-full ${colors[status] || 'bg-zinc-500'}`} />
+  );
+}
+
+function ActivityIcon({ type }: { type: string }) {
+  const isTrade = type === 'buy' || type === 'sell';
+  const isAlert = type === 'alert' || type === 'stop_hit' || type === 'target_hit';
+
+  return (
+    <div
+      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+        isTrade
+          ? type === 'buy'
+            ? 'bg-success-subtle text-success'
+            : 'bg-error-subtle text-error'
+          : isAlert
+          ? 'bg-warning-subtle text-warning'
+          : 'bg-background-tertiary text-zinc-400'
+      }`}
+    >
+      {type === 'buy'
+        ? 'B'
+        : type === 'sell'
+        ? 'S'
+        : type === 'stop_hit'
+        ? 'SL'
+        : type === 'target_hit'
+        ? 'TP'
+        : type.charAt(0).toUpperCase()}
+    </div>
   );
 }
