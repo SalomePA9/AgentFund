@@ -9,9 +9,19 @@ from notifications.email_client import (
     EmailResult,
     get_email_client,
 )
+from notifications.preferences import (
+    DeliveryChannel,
+    NotificationPreferences,
+    NotificationType,
+    PreferencesManager,
+)
 
 __all__ = [
     "EmailClient",
     "EmailResult",
     "get_email_client",
+    "DeliveryChannel",
+    "NotificationPreferences",
+    "NotificationType",
+    "PreferencesManager",
 ]
