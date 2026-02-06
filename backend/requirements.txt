@@ -1,0 +1,65 @@
+# FastAPI and server
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+websockets==12.0
+
+# Database
+supabase==2.3.4
+asyncpg==0.29.0
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+# Broker integration
+alpaca-py==0.21.1
+
+# Market data
+yfinance==0.2.36
+pandas==2.2.0
+numpy==1.26.4
+scipy==1.12.0
+
+# Sentiment analysis
+transformers==4.37.2
+torch==2.2.0
+feedparser==6.0.11
+
+# LLM
+anthropic==0.18.1
+
+# Email
+resend==0.8.0
+
+# Utilities
+python-dotenv==1.0.1
+httpx==0.25.2
+pydantic==2.6.1
+pydantic-settings==2.1.0
+tenacity==8.2.3
+email-validator==2.1.0
+
+# Task scheduling
+apscheduler==3.10.4
+
+# Security
+cryptography==42.0.2
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.4
+pytest-cov==4.1.0
+pytest-xdist==3.5.0
+pytest-timeout==2.2.0
+pytest-mock==3.12.0
+factory-boy==3.3.0
+faker==22.5.1
+respx==0.20.2
+
+# Code Quality
+ruff==0.2.1
+mypy==1.8.0
+black==24.1.1
+isort==5.13.2

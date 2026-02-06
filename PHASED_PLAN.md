@@ -24,6 +24,25 @@ This document breaks down the AgentFund AI Trading Platform into manageable deve
 
 ---
 
+## UI/UX Design Benchmark
+
+**Reference Template:** [Superior by Dream Studio](https://superior-template.framer.website/)
+
+All frontend development must follow the design guidelines documented in [`docs/UI_UX_GUIDELINES.md`](./docs/UI_UX_GUIDELINES.md).
+
+**Key Design Principles:**
+- Dark mode-first aesthetic
+- Clean, minimal interface with premium feel
+- Financial data clarity with monospace numbers
+- Subtle, purposeful animations
+- Mobile-responsive layouts
+
+**Color Palette:** Dark backgrounds (#0A0A0B), electric blue accent (#3B82F6), green for gains, red for losses.
+
+**Typography:** Inter for UI, JetBrains Mono for numbers.
+
+---
+
 ## Phase 1: Foundation (Weeks 1-4)
 
 ### Goal
