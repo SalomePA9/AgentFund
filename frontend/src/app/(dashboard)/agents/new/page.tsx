@@ -60,7 +60,6 @@ interface FormData {
 }
 
 export default function NewAgentPage() {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
