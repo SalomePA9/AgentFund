@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import agents, auth, broker, chat, market, reports, websocket
+from api import agents, auth, broker, chat, llm, market, reports, websocket
 from config import get_settings
 
 # Configure logging
@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(market.router, prefix="/api/market", tags=["Market Data"])
     app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
     app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
+    app.include_router(llm.router, prefix="/api/llm", tags=["LLM"])
     app.include_router(websocket.router, prefix="/api", tags=["WebSocket"])
 
     @app.get("/health")
