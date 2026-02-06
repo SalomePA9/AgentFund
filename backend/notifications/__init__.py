@@ -9,6 +9,15 @@ from notifications.email_client import (
     EmailResult,
     get_email_client,
 )
+from notifications.in_app import (
+    InAppNotification,
+    InAppNotificationManager,
+    NotificationCategory,
+    NotificationPriority,
+    create_agent_notification,
+    create_report_notification,
+    create_trade_notification,
+)
 from notifications.preferences import (
     DeliveryChannel,
     NotificationPreferences,
@@ -22,13 +31,24 @@ from notifications.scheduler import (
 )
 
 __all__ = [
+    # Email client
     "EmailClient",
     "EmailResult",
     "get_email_client",
+    # In-app notifications
+    "InAppNotification",
+    "InAppNotificationManager",
+    "NotificationCategory",
+    "NotificationPriority",
+    "create_agent_notification",
+    "create_report_notification",
+    "create_trade_notification",
+    # Preferences
     "DeliveryChannel",
     "NotificationPreferences",
     "NotificationType",
     "PreferencesManager",
+    # Scheduler
     "NotificationScheduler",
     "TimezoneHelper",
     "process_daily_reports",
