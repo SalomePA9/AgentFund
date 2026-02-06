@@ -13,7 +13,6 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from functools import lru_cache
 from typing import Any
 
 from anthropic import Anthropic, APIError, RateLimitError
@@ -144,9 +143,7 @@ class ClaudeClient:
 
         return None
 
-    def _cache_response(
-        self, cache_key: str, content: str, usage: TokenUsage
-    ) -> None:
+    def _cache_response(self, cache_key: str, content: str, usage: TokenUsage) -> None:
         """Cache a response."""
         if not self.enable_cache:
             return
@@ -263,9 +260,7 @@ class ClaudeClient:
 
         raise last_error or RuntimeError("Unknown error in Claude API call")
 
-    def get_usage_summary(
-        self, since: datetime | None = None
-    ) -> dict[str, Any]:
+    def get_usage_summary(self, since: datetime | None = None) -> dict[str, Any]:
         """
         Get usage summary for cost tracking.
 

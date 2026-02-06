@@ -15,7 +15,9 @@ from supabase import Client
 
 from api.auth import get_current_user
 from database import get_db
-from llm import ChatContext, ChatMessage as LLMChatMessage, get_chat_handler
+from llm import ChatContext
+from llm import ChatMessage as LLMChatMessage
+from llm import get_chat_handler
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +140,9 @@ def _get_conversation_history(
             LLMChatMessage(
                 role=role,
                 content=msg["message"],
-                timestamp=datetime.fromisoformat(msg["created_at"].replace("Z", "+00:00")),
+                timestamp=datetime.fromisoformat(
+                    msg["created_at"].replace("Z", "+00:00")
+                ),
             )
         )
 

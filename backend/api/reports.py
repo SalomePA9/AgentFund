@@ -95,7 +95,9 @@ def _build_agent_context(
     # Get open positions
     positions_result = (
         db.table("positions")
-        .select("ticker, shares, entry_price, current_price, unrealized_pnl, unrealized_pnl_pct")
+        .select(
+            "ticker, shares, entry_price, current_price, unrealized_pnl, unrealized_pnl_pct"
+        )
         .eq("agent_id", agent_id)
         .eq("status", "open")
         .execute()
@@ -115,9 +117,7 @@ def _build_agent_context(
     total_value = float(agent.get("total_value", 0) or 0)
     allocated_capital = float(agent.get("allocated_capital", 0) or 0)
     total_return_pct = (
-        ((total_value / allocated_capital) - 1) * 100
-        if allocated_capital > 0
-        else 0.0
+        ((total_value / allocated_capital) - 1) * 100 if allocated_capital > 0 else 0.0
     )
 
     # Calculate days active
@@ -271,7 +271,14 @@ async def get_team_summary(
                     allocated_capital=float(a.get("allocated_capital", 0) or 0),
                     daily_return_pct=float(a.get("daily_return_pct", 0) or 0),
                     total_return_pct=(
-                        ((float(a.get("total_value", 0) or 0) / float(a.get("allocated_capital", 1) or 1)) - 1) * 100
+                        (
+                            (
+                                float(a.get("total_value", 0) or 0)
+                                / float(a.get("allocated_capital", 1) or 1)
+                            )
+                            - 1
+                        )
+                        * 100
                     ),
                 )
                 for a in agents.data
@@ -408,10 +415,7 @@ async def generate_report(
         agents = agent_result.data
     else:
         agents_result = (
-            db.table("agents")
-            .select("*")
-            .eq("user_id", current_user["id"])
-            .execute()
+            db.table("agents").select("*").eq("user_id", current_user["id"]).execute()
         )
         agents = agents_result.data or []
 

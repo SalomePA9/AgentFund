@@ -317,9 +317,7 @@ Note: Full AI-generated reports will be available once the Anthropic API key is 
         total_value = sum(a.total_value for a in agents)
         total_allocated = sum(a.allocated_capital for a in agents)
         avg_return = (
-            sum(a.daily_return_pct for a in agents) / len(agents)
-            if agents
-            else 0
+            sum(a.daily_return_pct for a in agents) / len(agents) if agents else 0
         )
 
         # Build agent summaries

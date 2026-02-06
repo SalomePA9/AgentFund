@@ -164,17 +164,12 @@ Important guidelines:
 - Don't make up information - if you don't know, say so
 - Keep responses concise but informative (aim for 50-150 words)"""
 
-    def _format_history(
-        self, history: list[ChatMessage]
-    ) -> list[dict[str, str]]:
+    def _format_history(self, history: list[ChatMessage]) -> list[dict[str, str]]:
         """Format chat history for the API."""
         # Take most recent messages
-        recent = history[-self.MAX_HISTORY_MESSAGES:]
+        recent = history[-self.MAX_HISTORY_MESSAGES :]
 
-        return [
-            {"role": msg.role, "content": msg.content}
-            for msg in recent
-        ]
+        return [{"role": msg.role, "content": msg.content} for msg in recent]
 
     def generate_response(
         self,
@@ -242,8 +237,6 @@ Important guidelines:
         user_message: str,
     ) -> ChatResponse:
         """Generate a placeholder response when LLM is not available."""
-        persona = get_persona(context.persona)
-
         # Simple keyword-based responses
         message_lower = user_message.lower()
 
