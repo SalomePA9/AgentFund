@@ -1,3 +1,17 @@
-"""LLM prompt templates."""
+"""LLM prompt templates for AgentFund agents."""
 
-# Prompt templates will be implemented in Phase 2, Week 2.2
+from llm.prompts.personas import (
+    DEFAULT_PERSONA,
+    PERSONAS,
+    PersonaTemplate,
+    get_persona,
+    get_persona_names,
+)
+
+__all__ = [
+    "PersonaTemplate",
+    "PERSONAS",
+    "DEFAULT_PERSONA",
+    "get_persona",
+    "get_persona_names",
+]
