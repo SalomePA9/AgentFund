@@ -11,7 +11,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import agents, auth, broker, chat, llm, market, notifications, reports, websocket
+from api import (
+    agents,
+    auth,
+    broker,
+    chat,
+    llm,
+    market,
+    notifications,
+    reports,
+    websocket,
+)
 from config import get_settings
 
 # Configure logging
