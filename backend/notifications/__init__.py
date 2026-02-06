@@ -15,6 +15,11 @@ from notifications.preferences import (
     NotificationType,
     PreferencesManager,
 )
+from notifications.scheduler import (
+    NotificationScheduler,
+    TimezoneHelper,
+    process_daily_reports,
+)
 
 __all__ = [
     "EmailClient",
@@ -24,4 +29,7 @@ __all__ = [
     "NotificationPreferences",
     "NotificationType",
     "PreferencesManager",
+    "NotificationScheduler",
+    "TimezoneHelper",
+    "process_daily_reports",
 ]
