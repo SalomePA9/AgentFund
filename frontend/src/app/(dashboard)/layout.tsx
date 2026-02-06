@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: HomeIcon },
+  { href: '/overview', label: 'Dashboard', icon: HomeIcon },
   { href: '/agents', label: 'Agents', icon: AgentsIcon },
   { href: '/reports', label: 'Reports', icon: ReportsIcon },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
@@ -54,7 +54,7 @@ export default function DashboardLayout({
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="text-xl font-bold text-zinc-50">
+          <Link href="/overview" className="text-xl font-bold text-zinc-50">
             AgentFund
           </Link>
 
