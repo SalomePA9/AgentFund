@@ -14,7 +14,7 @@ import {
 } from '@/lib/utils';
 import type { Agent } from '@/types';
 
-export default function DashboardContent() {
+export default function OverviewPage() {
   const { agents, isLoading: agentsLoading, error: agentsError, refetch: refetchAgents, pauseAgent, resumeAgent } = useAgents();
   const { summary, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useTeamSummary();
 
