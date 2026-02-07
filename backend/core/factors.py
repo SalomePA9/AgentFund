@@ -24,6 +24,10 @@ class FactorScores:
     volatility_score: float
     composite_score: float
 
+    # Sentiment-derived scores (populated when sentiment data is available)
+    sentiment_score: float = 50.0  # 0-100, derived from combined_sentiment
+    integrated_composite: float | None = None  # Sentiment-factor blended score
+
     # Component details for debugging/transparency
     momentum_6m: float | None = None
     momentum_12m: float | None = None
@@ -63,6 +67,7 @@ class FactorCalculator:
         self,
         market_data: dict[str, dict[str, Any]],
         sectors: dict[str, str] | None = None,
+        factor_weights: dict[str, float] | None = None,
     ) -> dict[str, FactorScores]:
         """
         Calculate all factor scores for a universe of stocks.
@@ -81,6 +86,9 @@ class FactorCalculator:
                 - atr: Average True Range
                 - current_price: Current price
             sectors: Optional dict of symbol -> sector for sector-aware calculations
+            factor_weights: Optional dict with keys "momentum", "value",
+                "quality", "dividend", "volatility" mapping to float weights.
+                If None, equal weights (0.2 each) are used.
 
         Returns:
             Dict of symbol -> FactorScores
@@ -107,6 +115,24 @@ class FactorCalculator:
             volatility_raw, invert=True
         )  # Lower vol = higher score
 
+        # Resolve factor weights for composite calculation.
+        # Only use the 5 quant factor keys — ignore any extra keys
+        # (e.g. "sentiment") so that the 5 factors properly sum to 1.0.
+        _FACTOR_KEYS = ("momentum", "value", "quality", "dividend", "volatility")
+        w_m = 0.2
+        w_v = 0.2
+        w_q = 0.2
+        w_d = 0.2
+        w_vol = 0.2
+        if factor_weights:
+            raw = {k: factor_weights.get(k, 0.0) for k in _FACTOR_KEYS}
+            total = sum(raw.values()) or 1.0
+            w_m = raw["momentum"] / total
+            w_v = raw["value"] / total
+            w_q = raw["quality"] / total
+            w_d = raw["dividend"] / total
+            w_vol = raw["volatility"] / total
+
         # Build results
         for symbol in symbols:
             data = market_data[symbol]
@@ -117,8 +143,14 @@ class FactorCalculator:
             d_score = dividend_scores.get(symbol, 50.0)
             vol_score = volatility_scores.get(symbol, 50.0)
 
-            # Composite: equal weight of all factors
-            composite = (m_score + v_score + q_score + d_score + vol_score) / 5
+            # Composite: weighted by strategy-specific factor weights
+            composite = (
+                m_score * w_m
+                + v_score * w_v
+                + q_score * w_q
+                + d_score * w_d
+                + vol_score * w_vol
+            )
 
             # Extract component details
             prices = data.get("price_history", [])

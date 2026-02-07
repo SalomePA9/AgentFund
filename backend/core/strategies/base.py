@@ -55,6 +55,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import numpy as np
+
 # =============================================================================
 # Enums and Constants
 # =============================================================================
@@ -92,6 +94,7 @@ class SignalType(str, Enum):
     STATISTICAL_ZSCORE = "statistical_zscore"
     COINTEGRATION = "cointegration"
     REVERSAL = "reversal"
+    DIVIDEND_YIELD = "dividend_yield"
 
 
 class PositionSide(str, Enum):
@@ -198,6 +201,7 @@ class RiskConfig:
     max_sector_exposure: float = 0.30  # Max 30% per sector
     max_portfolio_leverage: float = 1.0  # No leverage by default
     stop_loss_atr_multiple: float = 2.0  # Stop at 2x ATR
+    take_profit_atr_multiple: float = 3.0  # Take profit at 3x ATR
     target_volatility: float = 0.15  # 15% annual vol target
     max_drawdown_limit: float = 0.20  # 20% max drawdown
     correlation_limit: float = 0.7  # Avoid highly correlated positions
@@ -307,7 +311,10 @@ class BaseStrategy(ABC):
 
     @abstractmethod
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Convert signals into position recommendations.
@@ -315,6 +322,7 @@ class BaseStrategy(ABC):
         Args:
             signals: List of signals from generate_signals()
             current_positions: Current portfolio positions (for turnover control)
+            market_data: Market data dict (may contain integrated_composite scores)
 
         Returns:
             List of Position recommendations
@@ -345,8 +353,10 @@ class BaseStrategy(ABC):
         if self.config.sentiment.mode != SentimentMode.DISABLED and sentiment_data:
             signals = self._apply_sentiment_overlay(signals, sentiment_data)
 
-        # Construct portfolio
-        positions = await self.construct_portfolio(signals, current_positions)
+        # Construct portfolio (pass market_data for integrated score access)
+        positions = await self.construct_portfolio(
+            signals, current_positions, market_data=market_data
+        )
 
         # Apply risk management
         positions = self._apply_risk_management(positions, market_data)
@@ -435,9 +445,29 @@ class BaseStrategy(ABC):
     ) -> list[Position]:
         """Apply risk management rules to positions."""
         risk_cfg = self.config.risk
-        adjusted_positions = []
 
-        # Calculate total exposure
+        # 1. Cap individual position sizes
+        for pos in positions:
+            pos.target_weight = min(pos.target_weight, risk_cfg.max_position_size)
+
+        # 2. Enforce sector concentration limits
+        sector_weights: dict[str, float] = {}
+        for pos in positions:
+            sector = (market_data.get(pos.symbol) or {}).get("sector", "Unknown")
+            sector_weights[sector] = sector_weights.get(sector, 0.0) + pos.target_weight
+
+        for sector, total_wt in sector_weights.items():
+            if total_wt > risk_cfg.max_sector_exposure:
+                # Scale down all positions in this sector proportionally
+                scale = risk_cfg.max_sector_exposure / total_wt
+                for pos in positions:
+                    pos_sector = (market_data.get(pos.symbol) or {}).get(
+                        "sector", "Unknown"
+                    )
+                    if pos_sector == sector:
+                        pos.target_weight *= scale
+
+        # 3. Scale down if over leverage limit
         total_long = sum(
             p.target_weight for p in positions if p.side == PositionSide.LONG
         )
@@ -446,32 +476,141 @@ class BaseStrategy(ABC):
         )
         gross_exposure = total_long + total_short
 
-        # Scale down if over leverage limit
         scale_factor = 1.0
         if gross_exposure > risk_cfg.max_portfolio_leverage:
             scale_factor = risk_cfg.max_portfolio_leverage / gross_exposure
 
+        adjusted_positions = []
         for pos in positions:
-            # Cap individual position size
-            pos.target_weight = min(pos.target_weight, risk_cfg.max_position_size)
-
-            # Apply leverage scaling
             pos.target_weight *= scale_factor
 
-            # Set stop loss based on ATR if available
+            # 4. Set stop loss based on ATR if available
             symbol_data = market_data.get(pos.symbol, {})
             atr = symbol_data.get("atr")
-            price = symbol_data.get("price")
+            price = symbol_data.get("current_price")
 
-            if atr and price and pos.stop_loss is None:
-                if pos.side == PositionSide.LONG:
-                    pos.stop_loss = price - (atr * risk_cfg.stop_loss_atr_multiple)
-                elif pos.side == PositionSide.SHORT:
-                    pos.stop_loss = price + (atr * risk_cfg.stop_loss_atr_multiple)
+            if atr and price:
+                try:
+                    atr = float(atr)
+                    price = float(price)
+                    # Set stop-loss if not already set
+                    if pos.stop_loss is None:
+                        if pos.side == PositionSide.LONG:
+                            pos.stop_loss = price - (
+                                atr * risk_cfg.stop_loss_atr_multiple
+                            )
+                        elif pos.side == PositionSide.SHORT:
+                            pos.stop_loss = price + (
+                                atr * risk_cfg.stop_loss_atr_multiple
+                            )
+                    # Set take-profit if not already set
+                    if pos.take_profit is None:
+                        if pos.side == PositionSide.LONG:
+                            pos.take_profit = price + (
+                                atr * risk_cfg.take_profit_atr_multiple
+                            )
+                        elif pos.side == PositionSide.SHORT:
+                            pos.take_profit = price - (
+                                atr * risk_cfg.take_profit_atr_multiple
+                            )
+                except (TypeError, ValueError):
+                    pass
 
             adjusted_positions.append(pos)
 
+        # 5. Correlation guard — drop positions that are too correlated
+        # with higher-ranked ones already in the portfolio.
+        adjusted_positions = self._filter_correlated(
+            adjusted_positions, market_data, risk_cfg.correlation_limit
+        )
+
         return adjusted_positions
+
+    @staticmethod
+    def _filter_correlated(
+        positions: list["Position"],
+        market_data: dict[str, Any],
+        max_corr: float,
+    ) -> list["Position"]:
+        """
+        Remove positions whose price history is too correlated with a
+        higher-priority position already accepted.
+
+        Positions are processed in order (highest signal_strength first).
+        A candidate is dropped if its correlation with ANY already-accepted
+        position exceeds ``max_corr``.
+        """
+        if max_corr >= 1.0:
+            return positions  # guard disabled
+
+        # Sort by signal strength descending (strongest kept first)
+        ordered = sorted(positions, key=lambda p: p.signal_strength, reverse=True)
+        accepted: list["Position"] = []
+        accepted_histories: list[list[float]] = []
+
+        for pos in ordered:
+            prices = (market_data.get(pos.symbol) or {}).get("price_history", [])
+            if len(prices) < 20:
+                # Not enough data to compute correlation — keep position
+                accepted.append(pos)
+                accepted_histories.append(prices)
+                continue
+
+            too_correlated = False
+            for hist in accepted_histories:
+                if len(hist) < 20:
+                    continue
+                # Use the last 60 days or the shorter series
+                n = min(60, len(prices), len(hist))
+                a = np.array(prices[-n:])
+                b = np.array(hist[-n:])
+                # Compute return correlations
+                if n < 3:
+                    continue
+                ra = np.diff(a) / a[:-1]
+                rb = np.diff(b) / b[:-1]
+                if np.std(ra) == 0 or np.std(rb) == 0:
+                    continue
+                corr = float(np.corrcoef(ra, rb)[0, 1])
+                if abs(corr) > max_corr:
+                    too_correlated = True
+                    break
+
+            if not too_correlated:
+                accepted.append(pos)
+                accepted_histories.append(prices)
+
+        return accepted
+
+    @staticmethod
+    def _apply_hysteresis(
+        positions: list["Position"],
+        current_positions: dict[str, Any] | None,
+        band: float = 5.0,
+    ) -> list["Position"]:
+        """
+        Apply a hysteresis band to positions: currently-held positions get
+        a stickiness bonus to their signal_strength so they are less likely
+        to be replaced by marginal candidates.  Also prevents direction
+        flips unless the new signal exceeds the band.
+
+        Returns a filtered list with adjusted signal strengths.
+        """
+        if not current_positions or band <= 0:
+            return positions
+
+        adjusted = []
+        for pos in positions:
+            if pos.symbol in current_positions:
+                cur = current_positions[pos.symbol]
+                cur_side = cur.get("side", "long")
+                # Boost signal strength for incumbents (keeps them in)
+                pos.signal_strength += band
+                # If direction is flipping, require extra conviction
+                if (pos.side.value != cur_side) and pos.signal_strength < band * 2:
+                    continue  # not enough conviction to flip
+            adjusted.append(pos)
+        return adjusted
 
     def _calculate_risk_metrics(
         self, positions: list[Position], market_data: dict[str, Any]

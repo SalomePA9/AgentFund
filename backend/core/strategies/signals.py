@@ -41,7 +41,7 @@ class TimeSeriesMomentumSignal(SignalGenerator):
         for symbol in symbols:
             data = market_data.get(symbol, {})
             prices = data.get("price_history", [])
-            current_price = data.get("price")
+            current_price = data.get("current_price")
 
             if not prices or not current_price or len(prices) < self.long_window:
                 continue
@@ -115,7 +115,7 @@ class CrossSectionalMomentumSignal(SignalGenerator):
         for symbol in symbols:
             data = market_data.get(symbol, {})
             prices = data.get("price_history", [])
-            current_price = data.get("price")
+            current_price = data.get("current_price")
 
             if prices and current_price and len(prices) >= self.lookback_days:
                 start_price = prices[-self.lookback_days]
@@ -576,7 +576,7 @@ class ShortTermReversalSignal(SignalGenerator):
         for symbol in symbols:
             data = market_data.get(symbol, {})
             prices = data.get("price_history", [])
-            current_price = data.get("price")
+            current_price = data.get("current_price")
 
             if prices and current_price and len(prices) >= self.lookback_days:
                 start_price = prices[-self.lookback_days]
@@ -646,7 +646,7 @@ class ZScoreSignal(SignalGenerator):
         for symbol in symbols:
             data = market_data.get(symbol, {})
             prices = data.get("price_history", [])
-            current_price = data.get("price")
+            current_price = data.get("current_price")
 
             if prices and current_price and len(prices) >= self.lookback_days:
                 window = prices[-self.lookback_days :]
@@ -693,7 +693,7 @@ class DividendYieldSignal(SignalGenerator):
 
     @property
     def signal_type(self) -> SignalType:
-        return SignalType.VALUE  # Use VALUE type for now, could add DIVIDEND
+        return SignalType.DIVIDEND_YIELD
 
     async def generate(
         self, symbols: list[str], market_data: dict[str, Any], **kwargs

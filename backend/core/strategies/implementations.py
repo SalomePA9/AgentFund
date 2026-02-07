@@ -117,7 +117,10 @@ class TrendFollowingStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct trend-following portfolio.
@@ -139,6 +142,7 @@ class TrendFollowingStrategy(BaseStrategy):
         params = self.config.custom_params
         min_signal = params.get("min_signal_strength", 20)
         allow_short = params.get("allow_short", False)
+        max_holding = params.get("max_holding_days", 90)  # ~1 quarter
 
         for symbol, mom_signal in momentum_signals.items():
             # Skip weak signals
@@ -172,6 +176,7 @@ class TrendFollowingStrategy(BaseStrategy):
                     side=side,
                     target_weight=weight,
                     signal_strength=abs(mom_signal.value),
+                    max_holding_days=max_holding,
                     metadata={
                         "strategy": "trend_following",
                         "momentum_signal": mom_signal.value,
@@ -179,6 +184,12 @@ class TrendFollowingStrategy(BaseStrategy):
                     },
                 )
             )
+
+        # Apply hysteresis to reduce whipsaw from MA crossover flips
+        hysteresis_band = params.get("hysteresis_band", 5.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
 
         return positions
 
@@ -285,12 +296,17 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct factor portfolio.
 
-        Uses weighted composite score to rank stocks.
+        Uses weighted composite score to rank stocks.  When the engine has
+        pre-computed integrated composite scores (via SentimentFactorIntegrator),
+        those are blended in to give sentiment-aware ranking.
         Takes top N% long, bottom N% short (if enabled).
         """
         params = self.config.custom_params
@@ -298,17 +314,47 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         bottom_pct = params.get("bottom_percentile", 20)
         allow_short = params.get("allow_short", False)
         equal_weight = params.get("equal_weight", True)
+        max_holding = params.get("max_holding_days", 180)  # ~2 quarters
+        market_data = market_data or {}
 
-        # Combine signals
+        # Combine signals from signal generators
         combiner = SignalCombiner(weights=self.factor_weights)
         combined_scores = combiner.combine(signals, method="weighted_average")
 
         if not combined_scores:
             return []
 
+        # Blend with pre-computed integrated composite scores when available.
+        # Integrated scores are on a 0-100 scale; signal combiner scores are
+        # on a -100 to +100 scale.  Normalise integrated to the same range
+        # and blend at 40% weight so the 7-layer integration meaningfully
+        # influences final ranking without completely overriding signals.
+        integrated_weight = 0.4
+        for sym in list(combined_scores.keys()):
+            ic = (market_data.get(sym) or {}).get("integrated_composite")
+            if ic is not None:
+                # Convert 0-100 → -100 to +100
+                ic_normalised = (ic - 50.0) * 2.0
+                combined_scores[sym] = (
+                    combined_scores[sym] * (1.0 - integrated_weight)
+                    + ic_normalised * integrated_weight
+                )
+
+        # Turnover hysteresis: give currently-held positions a stickiness
+        # bonus so they aren't replaced unless a new candidate outscores
+        # them by at least `hysteresis_band` points.  This prevents
+        # unnecessary churn and implicit transaction costs.
+        hysteresis_band = params.get("hysteresis_band", 5.0)
+        current_positions = current_positions or {}
+
+        ranking_scores = dict(combined_scores)
+        for sym in ranking_scores:
+            if sym in current_positions:
+                ranking_scores[sym] += hysteresis_band
+
         # Rank and select
         sorted_symbols = sorted(
-            combined_scores.keys(), key=lambda s: combined_scores[s], reverse=True
+            ranking_scores.keys(), key=lambda s: ranking_scores[s], reverse=True
         )
 
         n = len(sorted_symbols)
@@ -339,6 +385,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
                     side=PositionSide.LONG,
                     target_weight=weight,
                     signal_strength=score,
+                    max_holding_days=max_holding,
                     metadata={
                         "strategy": "cross_sectional_factor",
                         "composite_score": score,
@@ -370,6 +417,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
                         side=PositionSide.SHORT,
                         target_weight=weight,
                         signal_strength=abs(score),
+                        max_holding_days=max_holding,
                         metadata={
                             "strategy": "cross_sectional_factor",
                             "composite_score": score,
@@ -439,7 +487,10 @@ class ShortTermReversalStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct reversal portfolio.
@@ -509,6 +560,12 @@ class ShortTermReversalStrategy(BaseStrategy):
                     },
                 )
             )
+
+        # Apply hysteresis to reduce churn in short-horizon signals
+        hysteresis_band = params.get("hysteresis_band", 3.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
 
         # Balance for market neutrality if required
         if market_neutral:
@@ -605,7 +662,10 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct stat arb portfolio.
@@ -617,6 +677,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         min_zscore = params.get("min_zscore", 2.0)
         max_zscore = params.get("max_zscore", 4.0)  # Avoid extreme outliers
         pairs = params.get("pairs", [])  # List of (symbol1, symbol2) tuples
+        max_holding = params.get("max_holding_days", 30)  # ~1 month convergence
 
         zscore_signals: dict[str, Signal] = {}
         sentiment_signals: dict[str, Signal] = {}
@@ -705,12 +766,19 @@ class StatisticalArbitrageStrategy(BaseStrategy):
                             side=side,
                             target_weight=weight,
                             signal_strength=abs(z_signal.value),
+                            max_holding_days=max_holding,
                             metadata={
                                 "strategy": "statistical_arbitrage",
                                 "z_score": z,
                             },
                         )
                     )
+
+        # Apply hysteresis
+        hysteresis_band = params.get("hysteresis_band", 4.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
 
         return positions
 
@@ -779,7 +847,10 @@ class VolatilityPremiumStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct vol premium portfolio.
@@ -794,6 +865,7 @@ class VolatilityPremiumStrategy(BaseStrategy):
         params = self.config.custom_params
         low_vol_only = params.get("low_vol_only", True)
         vol_threshold_pct = params.get("vol_threshold_percentile", 30)  # Bottom 30%
+        max_holding = params.get("max_holding_days", 120)  # ~1 quarter for vol prem
         sentiment_filter = params.get("sentiment_crisis_threshold", -50)
 
         vol_signals: dict[str, Signal] = {}
@@ -842,6 +914,7 @@ class VolatilityPremiumStrategy(BaseStrategy):
                     side=PositionSide.LONG,
                     target_weight=weight,
                     signal_strength=vol_signal.value,
+                    max_holding_days=max_holding,
                     metadata={
                         "strategy": "volatility_premium",
                         "annualized_volatility": vol,
@@ -874,6 +947,12 @@ class VolatilityPremiumStrategy(BaseStrategy):
                         },
                     )
                 )
+
+        # Apply hysteresis — vol premium is a low-turnover strategy
+        hysteresis_band = params.get("hysteresis_band", 6.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
 
         return positions
 
