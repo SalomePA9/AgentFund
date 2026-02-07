@@ -23,6 +23,7 @@ from core.factors import FactorCalculator
 from core.sentiment_integration import (
     SentimentFactorIntegrator,
     SentimentInput,
+    TemporalSentimentAnalyzer,
 )
 from core.strategies import (
     SentimentConfig,
@@ -171,7 +172,11 @@ class StrategyEngine:
             if market_data is None or sentiment_data is None:
                 market_data, sentiment_data = await self._fetch_data(ctx)
 
-            # Step 3: Run sentiment-factor integration
+            # Step 3: Enrich sentiment with temporal history
+            temporal = TemporalSentimentAnalyzer(db_client=self._db)
+            sentiment_data = await temporal.enrich(sentiment_data, lookback_days=30)
+
+            # Step 4: Run sentiment-factor integration
             integrator = SentimentFactorIntegrator(
                 strategy_type=ctx.strategy_type,
                 sentiment_weight=ctx.strategy_params.get("sentiment_weight", 0.25),
@@ -195,7 +200,9 @@ class StrategyEngine:
                 for sym, fs in factor_scores.items()
             }
 
-            integrated = integrator.integrate(factor_data, sentiment_data)
+            integrated = integrator.integrate(
+                factor_data, sentiment_data, market_data=market_data
+            )
 
             # Step 4: Build sentiment_data dict for strategy framework
             # (the strategy framework expects symbol → {combined, news, social, velocity})

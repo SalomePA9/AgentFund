@@ -4,18 +4,22 @@ Sentiment-Factor Integration Engine
 Proprietary techniques for combining sentiment signals with quantitative
 factor scores to amplify strategy accuracy and upside.
 
-Five integration layers:
+Seven integration layers:
 1. Convergence Amplification — reward agreement between factors and sentiment
 2. Velocity-Momentum Resonance — sentiment acceleration confirms price trends
 3. Cross-Source Triangulation — news/social agreement boosts confidence
 4. Sentiment Dispersion Risk — news vs social spread signals uncertainty
 5. Regime-Aware Factor Tilting — aggregate sentiment shifts factor weights
+6. Temporal Persistence — sustained multi-day sentiment weighs more than noise
+7. MA-Sentiment Confluence — price above MA200 + persistent bullish sentiment
+                              triggers a strong buy signal (and vice versa)
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
@@ -37,6 +41,12 @@ class SentimentInput:
     social_sentiment: float | None = None  # -100 to +100
     combined_sentiment: float | None = None  # -100 to +100
     velocity: float | None = None  # daily rate of change
+
+    # Temporal features (populated by TemporalSentimentAnalyzer)
+    streak_days: int = 0  # consecutive days positive (>0) or negative (<0)
+    trend_slope: float | None = None  # linear regression slope over window
+    persistence: float | None = None  # 0-1, low variance = high persistence
+    is_breakout: bool = False  # sudden sentiment regime change
 
 
 @dataclass
@@ -60,6 +70,8 @@ class IntegratedScore:
     resonance_multiplier: float = 1.0  # [0.8, 1.2] — scales momentum
     triangulation_confidence: float = 1.0  # [0.5, 1.0]
     dispersion_risk: float = 0.0  # [0, 1] — higher = more uncertain
+    temporal_bonus: float = 0.0  # [-10, +10] — persistence reward/penalty
+    confluence_bonus: float = 0.0  # [-12, +12] — MA+sentiment alignment
 
     # Final blended composite
     composite_score: float = 50.0
@@ -80,6 +92,173 @@ class MarketRegime:
     quality_tilt: float = 0.0
     dividend_tilt: float = 0.0
     volatility_tilt: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Temporal Sentiment Analyzer
+# ---------------------------------------------------------------------------
+
+
+class TemporalSentimentAnalyzer:
+    """
+    Computes temporal features from the sentiment_history table and enriches
+    SentimentInput objects with streak, trend, persistence, and breakout data.
+
+    Usage::
+
+        analyzer = TemporalSentimentAnalyzer(db_client=supabase)
+        enriched = await analyzer.enrich(sentiment_data, lookback_days=30)
+    """
+
+    def __init__(self, db_client: Any = None):
+        self._db = db_client
+
+    async def enrich(
+        self,
+        sentiment_data: dict[str, SentimentInput],
+        lookback_days: int = 30,
+    ) -> dict[str, SentimentInput]:
+        """
+        Fetch sentiment history and compute temporal features for all symbols.
+
+        Modifies SentimentInput objects in-place and returns the same dict.
+        """
+        if not self._db:
+            logger.warning("No DB client — skipping temporal enrichment")
+            return sentiment_data
+
+        cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
+        history_by_symbol = await self._fetch_history(cutoff)
+
+        for symbol, sent in sentiment_data.items():
+            records = history_by_symbol.get(symbol, [])
+            if len(records) < 2:
+                continue
+
+            # Records are ordered oldest → newest
+            combined_series = [
+                r["combined_sentiment"]
+                for r in records
+                if r.get("combined_sentiment") is not None
+            ]
+            if len(combined_series) < 2:
+                continue
+
+            sent.streak_days = self._calc_streak(combined_series)
+            sent.trend_slope = self._calc_trend_slope(combined_series)
+            sent.persistence = self._calc_persistence(combined_series)
+            sent.is_breakout = self._calc_breakout(combined_series)
+
+        enriched_count = sum(1 for s in sentiment_data.values() if s.streak_days != 0)
+        logger.info(
+            "Temporal enrichment: %d/%d symbols with history",
+            enriched_count,
+            len(sentiment_data),
+        )
+        return sentiment_data
+
+    async def _fetch_history(self, cutoff_iso: str) -> dict[str, list[dict]]:
+        """Fetch sentiment_history rows since cutoff, grouped by symbol."""
+        try:
+            result = (
+                self._db.table("sentiment_history")
+                .select("symbol, combined_sentiment, recorded_at")
+                .gte("recorded_at", cutoff_iso)
+                .order("recorded_at", desc=False)
+                .execute()
+            )
+            grouped: dict[str, list[dict]] = {}
+            for row in result.data:
+                sym = row.get("symbol")
+                if sym:
+                    grouped.setdefault(sym, []).append(row)
+            return grouped
+        except Exception:
+            logger.warning("Failed to fetch sentiment_history", exc_info=True)
+            return {}
+
+    # ------------------------------------------------------------------
+    # Feature calculations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _calc_streak(series: list[float]) -> int:
+        """
+        Count consecutive days at the end of the series where sentiment
+        stays on the same side of zero.
+
+        Returns positive int for bullish streaks, negative for bearish.
+        """
+        if not series:
+            return 0
+
+        last_sign = 1 if series[-1] >= 0 else -1
+        streak = 0
+        for val in reversed(series):
+            current_sign = 1 if val >= 0 else -1
+            if current_sign == last_sign:
+                streak += 1
+            else:
+                break
+        return streak * last_sign
+
+    @staticmethod
+    def _calc_trend_slope(series: list[float]) -> float:
+        """
+        Linear regression slope of combined sentiment over the window.
+
+        Positive slope = sentiment improving over time.
+        Normalised to roughly [-5, +5] range (points per day).
+        """
+        n = len(series)
+        if n < 3:
+            return 0.0
+        x = np.arange(n, dtype=float)
+        y = np.array(series, dtype=float)
+        # Simple least-squares slope: Σ(x-x̄)(y-ȳ) / Σ(x-x̄)²
+        x_mean = x.mean()
+        y_mean = y.mean()
+        numerator = float(np.sum((x - x_mean) * (y - y_mean)))
+        denominator = float(np.sum((x - x_mean) ** 2))
+        if denominator == 0:
+            return 0.0
+        return numerator / denominator
+
+    @staticmethod
+    def _calc_persistence(series: list[float]) -> float:
+        """
+        Measures how stable/persistent sentiment has been.
+
+        Low standard deviation → high persistence (conviction).
+        Returns 0-1 where 1 = perfectly stable, 0 = extremely noisy.
+        """
+        if len(series) < 3:
+            return 0.5
+        std = float(np.std(series))
+        # Normalise: std of 0 → persistence 1.0, std of 50+ → persistence ~0
+        return 1.0 / (1.0 + (std / 20.0) ** 1.5)
+
+    @staticmethod
+    def _calc_breakout(series: list[float], recent_days: int = 3) -> bool:
+        """
+        Detect a sentiment regime change: the recent window diverges
+        significantly from the prior baseline.
+
+        A breakout occurs when the average of the last `recent_days`
+        differs from the prior average by more than 30 points and
+        crosses zero.
+        """
+        if len(series) < recent_days + 5:
+            return False
+
+        recent_avg = float(np.mean(series[-recent_days:]))
+        prior_avg = float(np.mean(series[:-recent_days]))
+
+        # Must cross zero and differ by ≥30 points
+        crossed_zero = (recent_avg >= 0) != (prior_avg >= 0)
+        large_move = abs(recent_avg - prior_avg) >= 30.0
+
+        return crossed_zero and large_move
 
 
 # ---------------------------------------------------------------------------
@@ -147,13 +326,13 @@ _RISK_OFF_TILTS = {
 
 class SentimentFactorIntegrator:
     """
-    Combines quantitative factor scores with sentiment signals using five
+    Combines quantitative factor scores with sentiment signals using seven
     proprietary integration techniques.
 
     Usage::
 
         integrator = SentimentFactorIntegrator(strategy_type="momentum")
-        results = integrator.integrate(factor_data, sentiment_data)
+        results = integrator.integrate(factor_data, sentiment_data, market_data)
         # results: dict[symbol, IntegratedScore]
     """
 
@@ -185,17 +364,21 @@ class SentimentFactorIntegrator:
         self,
         factor_data: dict[str, dict[str, float]],
         sentiment_data: dict[str, SentimentInput],
+        market_data: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, IntegratedScore]:
         """
-        Run all five integration layers and return blended scores.
+        Run all seven integration layers and return blended scores.
 
         Args:
             factor_data: symbol → {momentum_score, value_score, ...} (0-100)
-            sentiment_data: symbol → SentimentInput
+            sentiment_data: symbol → SentimentInput (with temporal fields)
+            market_data: symbol → {current_price, ma_200, ...} for confluence
 
         Returns:
             symbol → IntegratedScore
         """
+        market_data = market_data or {}
+
         # Step 0 — detect market regime from aggregate sentiment
         regime = self._detect_regime(sentiment_data)
         tilted_weights = self._apply_regime_tilts(regime)
@@ -204,6 +387,7 @@ class SentimentFactorIntegrator:
 
         for symbol, factors in factor_data.items():
             sent = sentiment_data.get(symbol, SentimentInput(symbol=symbol))
+            mkt = market_data.get(symbol, {})
 
             # Normalise sentiment to 0-100 scale (from -100..+100)
             sentiment_score = self._normalise_sentiment(sent)
@@ -220,6 +404,14 @@ class SentimentFactorIntegrator:
             # Layer 4: Sentiment dispersion risk
             dispersion = self._calc_dispersion(sent)
 
+            # Layer 5: Regime tilting (already applied via tilted_weights)
+
+            # Layer 6: Temporal persistence bonus
+            temporal = self._calc_temporal_bonus(sent)
+
+            # Layer 7: MA-sentiment confluence
+            confluence = self._calc_ma_confluence(sent, mkt)
+
             # Apply resonance to momentum before blending
             adjusted_momentum = factors.get("momentum_score", 50.0) * resonance
 
@@ -234,8 +426,14 @@ class SentimentFactorIntegrator:
             }
             composite = sum(raw_factors[k] * tilted_weights[k] for k in tilted_weights)
 
-            # Add convergence bonus (clamped)
+            # Add convergence bonus
             composite += convergence * self.convergence_strength
+
+            # Add temporal persistence bonus
+            composite += temporal
+
+            # Add MA-sentiment confluence bonus
+            composite += confluence
 
             # Scale by triangulation confidence and dispersion risk
             confidence_scale = triangulation * (1.0 - 0.3 * dispersion)
@@ -256,6 +454,8 @@ class SentimentFactorIntegrator:
                 resonance_multiplier=round(resonance, 4),
                 triangulation_confidence=round(triangulation, 4),
                 dispersion_risk=round(dispersion, 4),
+                temporal_bonus=round(temporal, 4),
+                confluence_bonus=round(confluence, 4),
                 composite_score=round(composite, 2),
                 factor_weights=tilted_weights,
             )
@@ -438,6 +638,118 @@ class SentimentFactorIntegrator:
         self._normalise_weights(weights)
 
         return weights
+
+    # ------------------------------------------------------------------
+    # Layer 6 — Temporal Persistence
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _calc_temporal_bonus(sent: SentimentInput) -> float:
+        """
+        Reward sustained sentiment (multi-day streaks) and penalise noisy
+        single-day signals.
+
+        A stock with a 10-day bullish streak and high persistence gets a
+        bonus of up to +10.  A 1-day blip with low persistence gets ~0.
+        Breakout events receive an extra kick.
+
+        Returns a value in [-10, +10].
+        """
+        streak = sent.streak_days
+        persistence = sent.persistence
+        is_breakout = sent.is_breakout
+        trend_slope = sent.trend_slope
+
+        if persistence is None:
+            persistence = 0.5
+
+        # Streak contribution: log-scaled so marginal gains diminish
+        # abs(streak)=1 → ~0, =5 → ~3.2, =10 → ~4.6, =20 → ~6.0
+        if streak == 0:
+            streak_component = 0.0
+        else:
+            sign = 1.0 if streak > 0 else -1.0
+            streak_component = sign * np.log1p(abs(streak)) * 2.0
+
+        # Persistence multiplier: high persistence amplifies, low dampens
+        # persistence=1.0 → 1.3x, persistence=0.0 → 0.4x
+        persistence_mult = 0.4 + 0.9 * persistence
+
+        # Trend slope contribution: adds up to ±2 points
+        slope_component = 0.0
+        if trend_slope is not None:
+            slope_component = max(-2.0, min(2.0, trend_slope * 0.5))
+
+        # Breakout bonus: a regime change gets an extra ±2 points
+        breakout_bonus = 0.0
+        if is_breakout and sent.combined_sentiment is not None:
+            breakout_bonus = 2.0 if sent.combined_sentiment >= 0 else -2.0
+
+        raw = (streak_component * persistence_mult) + slope_component + breakout_bonus
+        return max(-10.0, min(10.0, raw))
+
+    # ------------------------------------------------------------------
+    # Layer 7 — MA-Sentiment Confluence
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _calc_ma_confluence(sent: SentimentInput, market: dict[str, Any]) -> float:
+        """
+        Generates a strong buy/sell signal when price position relative to
+        the 200-day moving average aligns with sustained sentiment.
+
+        Price above MA200 + multi-day bullish sentiment → buy bonus.
+        Price below MA200 + multi-day bearish sentiment → sell penalty.
+        Misalignment or missing data → no effect.
+
+        Returns a value in [-12, +12].
+        """
+        price = market.get("current_price")
+        ma_200 = market.get("ma_200")
+
+        if price is None or ma_200 is None:
+            return 0.0
+
+        try:
+            price = float(price)
+            ma_200 = float(ma_200)
+        except (TypeError, ValueError):
+            return 0.0
+
+        if ma_200 <= 0:
+            return 0.0
+
+        streak = sent.streak_days
+
+        # Price position: how far above/below MA200 (as fraction)
+        ma_deviation = (price - ma_200) / ma_200  # e.g., +0.05 = 5% above
+
+        # Check for alignment
+        price_bullish = ma_deviation > 0.0
+        sentiment_bullish = streak > 0
+        price_bearish = ma_deviation < 0.0
+        sentiment_bearish = streak < 0
+
+        if price_bullish and sentiment_bullish:
+            # Both bullish — strength scales with streak length and MA distance
+            streak_factor = min(1.0, abs(streak) / 10.0)  # saturates at 10 days
+            ma_factor = min(1.0, abs(ma_deviation) / 0.10)  # saturates at 10% above
+            return 12.0 * streak_factor * ma_factor
+
+        if price_bearish and sentiment_bearish:
+            # Both bearish — penalty scales similarly
+            streak_factor = min(1.0, abs(streak) / 10.0)
+            ma_factor = min(1.0, abs(ma_deviation) / 0.10)
+            return -12.0 * streak_factor * ma_factor
+
+        if (price_bullish and sentiment_bearish) or (
+            price_bearish and sentiment_bullish
+        ):
+            # Divergence — mild penalty for conflicting signals
+            streak_factor = min(1.0, abs(streak) / 10.0)
+            return -3.0 * streak_factor
+
+        return 0.0
 
     # ------------------------------------------------------------------
     # Helpers

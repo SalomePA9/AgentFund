@@ -20,6 +20,7 @@ from core.factors import FactorCalculator, FactorScores  # noqa: E402
 from core.sentiment_integration import (  # noqa: E402
     SentimentFactorIntegrator,
     SentimentInput,
+    TemporalSentimentAnalyzer,
 )
 from database import get_supabase_client  # noqa: E402
 
@@ -227,10 +228,19 @@ async def run_factor_scoring_job() -> dict:
                 "volatility_score": fs.volatility_score,
             }
 
+        # Enrich sentiment with temporal features from sentiment_history
+        logger.info("Enriching sentiment with temporal history...")
+        temporal_analyzer = TemporalSentimentAnalyzer(db_client=supabase)
+        sentiment_data = await temporal_analyzer.enrich(
+            sentiment_data, lookback_days=30
+        )
+
         # Use momentum strategy as the default integrated composite
         # (agents override with their own strategy_type at execution time)
         integrator = SentimentFactorIntegrator(strategy_type="momentum")
-        integrated = integrator.integrate(factor_data, sentiment_data)
+        integrated = integrator.integrate(
+            factor_data, sentiment_data, market_data=stock_data
+        )
 
         # Merge integrated scores back into FactorScores
         for symbol, iscore in integrated.items():
