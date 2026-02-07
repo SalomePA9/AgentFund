@@ -161,7 +161,7 @@ async def execute_orders(
     result: ExecutionResult,
     agent: dict,
     market_data: dict[str, dict],
-) -> list[dict]:
+) -> tuple[list[dict], Any]:
     """
     Forward actionable OrderActions to the Alpaca broker for execution.
 
@@ -169,7 +169,7 @@ async def execute_orders(
     "increase" / "decrease" are converted to the appropriate buy/sell
     quantity delta.  "hold" actions are skipped.
 
-    Returns a list of order result dicts (or errors).
+    Returns (order_results, broker) — broker is None if no credentials.
     """
     from core.broker.alpaca_broker import AlpacaBroker, BrokerMode
 
@@ -177,7 +177,7 @@ async def execute_orders(
     user_id = agent.get("user_id")
     if not user_id:
         logger.warning("Agent %s has no user_id — skipping execution", result.agent_id)
-        return []
+        return [], None
 
     user_result = (
         supabase.table("users")
@@ -195,7 +195,7 @@ async def execute_orders(
             "Agent %s: user has no Alpaca credentials — logging only",
             result.agent_id,
         )
-        return []
+        return [], None
 
     paper = user.get("alpaca_paper_mode", True)
     mode = BrokerMode.PAPER if paper else BrokerMode.LIVE
@@ -209,11 +209,11 @@ async def execute_orders(
         cash = account.get("cash", 0.0)
     except Exception as e:
         logger.error("Agent %s: failed to get account — %s", result.agent_id, e)
-        return []
+        return [], broker
 
     if equity <= 0:
         logger.warning("Agent %s: account equity is zero", result.agent_id)
-        return []
+        return [], broker
 
     # Use the agent's allocated_capital as the sizing basis (not full
     # account equity) so multiple agents sharing one Alpaca account
@@ -322,7 +322,73 @@ async def execute_orders(
         len(order_results),
         remaining_bp,
     )
-    return order_results
+    return order_results, broker
+
+
+# ---------------------------------------------------------------------------
+# Broker-side protective orders (stop-loss & take-profit)
+# ---------------------------------------------------------------------------
+
+
+def place_bracket_orders(
+    broker,
+    symbol: str,
+    qty: float,
+    stop_price: float | None,
+    target_price: float | None,
+    side: str = "long",
+) -> dict[str, str | None]:
+    """
+    Place server-side stop-loss and take-profit orders at the broker so
+    positions are protected between batch runs.
+
+    Returns dict with ``stop_order_id`` and ``tp_order_id`` (or None on failure).
+    """
+    ids: dict[str, str | None] = {"stop_order_id": None, "tp_order_id": None}
+
+    sell_side = "sell" if side == "long" else "buy"
+
+    # Place GTC stop order
+    if stop_price is not None and qty > 0:
+        try:
+            stop_order = broker.place_stop_order(
+                symbol=symbol,
+                qty=qty,
+                side=sell_side,
+                stop_price=round(stop_price, 2),
+                time_in_force="gtc",
+            )
+            ids["stop_order_id"] = stop_order.get("id")
+            logger.info(
+                "Placed stop order for %s @ %.2f (id=%s)",
+                symbol,
+                stop_price,
+                ids["stop_order_id"],
+            )
+        except Exception as e:
+            logger.error("Failed to place stop order for %s: %s", symbol, e)
+
+    # Place GTC limit order for take-profit
+    if target_price is not None and qty > 0:
+        try:
+            tp_order = broker.place_limit_order(
+                symbol=symbol,
+                qty=qty,
+                side=sell_side,
+                limit_price=round(target_price, 2),
+                time_in_force="gtc",
+            )
+            ids["tp_order_id"] = tp_order.get("id")
+            logger.info(
+                "Placed take-profit order for %s @ %.2f (id=%s)",
+                symbol,
+                target_price,
+                ids["tp_order_id"],
+            )
+        except Exception as e:
+            logger.error("Failed to place take-profit order for %s: %s", symbol, e)
+
+    return ids
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +402,7 @@ async def sync_positions(
     agent: dict,
     order_results: list[dict],
     market_data: dict[str, dict],
+    broker=None,
 ) -> None:
     """
     Create, update, and close position records in the ``positions`` table
@@ -389,11 +456,28 @@ async def sync_positions(
                 }
 
                 # Attach stop-loss and take-profit from strategy output
+                stop_price = None
+                target_price_val = None
                 if rec:
                     if rec.stop_loss is not None:
-                        row["stop_loss_price"] = float(rec.stop_loss)
+                        stop_price = float(rec.stop_loss)
+                        row["stop_loss_price"] = stop_price
                     if rec.take_profit is not None:
-                        row["target_price"] = float(rec.take_profit)
+                        target_price_val = float(rec.take_profit)
+                        row["target_price"] = target_price_val
+
+                # Place broker-side protective orders (GTC stop + take-profit)
+                if broker and float(qty) > 0:
+                    bracket_ids = place_bracket_orders(
+                        broker,
+                        symbol=sym,
+                        qty=float(qty),
+                        stop_price=stop_price,
+                        target_price=target_price_val,
+                        side=rec.side.value if rec else "long",
+                    )
+                    if bracket_ids.get("stop_order_id"):
+                        row["stop_order_id"] = bracket_ids["stop_order_id"]
 
                 supabase.table("positions").insert(row).execute()
                 logger.info("Agent %s: created position record for %s", agent_id, sym)
@@ -618,11 +702,15 @@ async def run_strategy_execution_job() -> dict:
                 saved = await save_execution_result(supabase, result)
 
                 # Forward actionable orders to broker
-                orders = await execute_orders(supabase, result, agent, market_data)
+                orders, broker = await execute_orders(
+                    supabase, result, agent, market_data
+                )
 
                 # Sync position records (create/update/close in DB)
+                # and place broker-side protective orders for new buys
                 await sync_positions(
-                    supabase, result, agent, orders, market_data
+                    supabase, result, agent, orders, market_data,
+                    broker=broker,
                 )
 
                 if saved:
