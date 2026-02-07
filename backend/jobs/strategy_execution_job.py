@@ -16,6 +16,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports when running as script
 _backend_dir = Path(__file__).resolve().parent.parent
@@ -277,6 +278,161 @@ async def execute_orders(
 
 
 # ---------------------------------------------------------------------------
+# Position lifecycle management
+# ---------------------------------------------------------------------------
+
+
+async def sync_positions(
+    supabase,
+    result: ExecutionResult,
+    agent: dict,
+    order_results: list[dict],
+    market_data: dict[str, dict],
+) -> None:
+    """
+    Create, update, and close position records in the ``positions`` table
+    based on executed order actions.
+
+    This bridges the gap between the engine's recommendations and the
+    persistent position records that drive stop-loss monitoring, aging,
+    and cash tracking.
+    """
+    agent_id = result.agent_id
+
+    # Build lookup of strategy-recommended positions for metadata
+    recommended: dict[str, Any] = {}
+    if result.strategy_output:
+        for pos in result.strategy_output.positions:
+            recommended[pos.symbol] = pos
+
+    # Build lookup of filled order results by symbol for order IDs
+    filled_orders: dict[str, dict] = {}
+    for o in order_results:
+        sym = o.get("symbol")
+        if sym and not o.get("error"):
+            filled_orders[sym] = o
+
+    for action in result.order_actions:
+        sym = action.symbol
+        md = market_data.get(sym) or {}
+        current_price = md.get("current_price")
+        rec = recommended.get(sym)
+
+        try:
+            if action.action == "buy":
+                # Create a new position record
+                order_info = filled_orders.get(sym, {})
+                entry_price = order_info.get("filled_avg_price") or current_price
+                qty = order_info.get("filled_qty") or order_info.get("qty")
+
+                if not entry_price or not qty:
+                    continue
+
+                row = {
+                    "agent_id": agent_id,
+                    "ticker": sym,
+                    "shares": float(qty),
+                    "entry_price": float(entry_price),
+                    "entry_date": datetime.utcnow().date().isoformat(),
+                    "entry_rationale": action.reason,
+                    "current_price": float(current_price) if current_price else None,
+                    "status": "open",
+                    "entry_order_id": order_info.get("id"),
+                }
+
+                # Attach stop-loss and take-profit from strategy output
+                if rec:
+                    if rec.stop_loss is not None:
+                        row["stop_loss_price"] = float(rec.stop_loss)
+                    if rec.take_profit is not None:
+                        row["target_price"] = float(rec.take_profit)
+
+                supabase.table("positions").insert(row).execute()
+                logger.info("Agent %s: created position record for %s", agent_id, sym)
+
+            elif action.action == "sell":
+                # Close existing position record(s)
+                order_info = filled_orders.get(sym, {})
+                exit_price = order_info.get("filled_avg_price") or current_price
+
+                existing = (
+                    supabase.table("positions")
+                    .select("id, entry_price, shares")
+                    .eq("agent_id", agent_id)
+                    .eq("ticker", sym)
+                    .eq("status", "open")
+                    .execute()
+                )
+
+                for pos_row in existing.data:
+                    update: dict[str, Any] = {
+                        "status": "closed",
+                        "exit_date": datetime.utcnow().date().isoformat(),
+                        "exit_rationale": action.reason,
+                        "exit_order_id": order_info.get("id"),
+                    }
+                    if exit_price:
+                        update["exit_price"] = float(exit_price)
+                        ep = float(pos_row.get("entry_price") or 0)
+                        if ep > 0:
+                            pnl = (float(exit_price) - ep) * float(
+                                pos_row.get("shares", 0)
+                            )
+                            pnl_pct = (float(exit_price) - ep) / ep
+                            update["realized_pnl"] = round(pnl, 2)
+                            update["realized_pnl_pct"] = round(pnl_pct, 4)
+
+                    supabase.table("positions").update(update).eq(
+                        "id", pos_row["id"]
+                    ).execute()
+
+                logger.info("Agent %s: closed position record for %s", agent_id, sym)
+
+            elif action.action in ("increase", "decrease"):
+                # Update shares on the existing open position
+                order_info = filled_orders.get(sym, {})
+                delta_qty = order_info.get("filled_qty") or order_info.get("qty")
+                if not delta_qty:
+                    continue
+
+                existing = (
+                    supabase.table("positions")
+                    .select("id, shares")
+                    .eq("agent_id", agent_id)
+                    .eq("ticker", sym)
+                    .eq("status", "open")
+                    .limit(1)
+                    .execute()
+                )
+
+                if existing.data:
+                    pos_row = existing.data[0]
+                    old_shares = float(pos_row.get("shares", 0))
+                    if action.action == "increase":
+                        new_shares = old_shares + float(delta_qty)
+                    else:
+                        new_shares = max(0, old_shares - float(delta_qty))
+
+                    update = {"shares": new_shares}
+                    if rec and rec.stop_loss is not None:
+                        update["stop_loss_price"] = float(rec.stop_loss)
+                    if rec and rec.take_profit is not None:
+                        update["target_price"] = float(rec.take_profit)
+
+                    supabase.table("positions").update(update).eq(
+                        "id", pos_row["id"]
+                    ).execute()
+
+        except Exception as e:
+            logger.error(
+                "Agent %s: failed to sync position for %s — %s",
+                agent_id,
+                sym,
+                e,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Result persistence
 # ---------------------------------------------------------------------------
 
@@ -415,6 +571,11 @@ async def run_strategy_execution_job() -> dict:
 
                 # Forward actionable orders to broker
                 orders = await execute_orders(supabase, result, agent, market_data)
+
+                # Sync position records (create/update/close in DB)
+                await sync_positions(
+                    supabase, result, agent, orders, market_data
+                )
 
                 if saved:
                     successes += 1
