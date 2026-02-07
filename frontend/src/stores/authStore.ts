@@ -35,10 +35,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     } catch (err) {
       set({
-        isLoading: false,
         error: err instanceof Error ? err.message : 'Login failed',
       });
       throw err;
+    } finally {
+      set({ isLoading: false });
     }
   },
 
@@ -49,10 +50,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await get().login(email, password);
     } catch (err) {
       set({
-        isLoading: false,
         error: err instanceof Error ? err.message : 'Registration failed',
       });
       throw err;
+    } finally {
+      set({ isLoading: false });
     }
   },
 
@@ -64,7 +66,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loadUser: async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
     if (!token) {
-      set({ isAuthenticated: false, user: null });
+      set({ isAuthenticated: false, user: null, isLoading: false });
       return;
     }
 
