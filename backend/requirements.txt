@@ -35,7 +35,7 @@ resend==0.8.0
 
 # Utilities
 python-dotenv==1.0.1
-httpx==0.25.2
+httpx==0.28.1
 pydantic==2.6.1
 pydantic-settings==2.1.0
 tenacity==8.2.3
