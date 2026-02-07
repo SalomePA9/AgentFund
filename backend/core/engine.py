@@ -287,7 +287,12 @@ class StrategyEngine:
 
             # Step 7: Diff recommended positions against current holdings
             # to produce concrete buy/sell/hold order actions.
-            order_actions = self._diff_positions(output, ctx.current_positions)
+            order_actions = self._diff_positions(
+                output,
+                ctx.current_positions,
+                allocated_capital=ctx.allocated_capital,
+                market_data=market_data,
+            )
 
             # Step 8: Stop-loss check — scan current positions for any
             # that have breached their stop price and inject sell actions.
@@ -792,10 +797,16 @@ class StrategyEngine:
     def _diff_positions(
         output: StrategyOutput,
         current_positions: list[dict[str, Any]],
+        allocated_capital: float = 0.0,
+        market_data: dict[str, dict[str, Any]] | None = None,
     ) -> list[OrderAction]:
         """
         Compare strategy-recommended positions against current holdings
         and produce concrete order actions.
+
+        Computes each position's current weight from its market value
+        (shares * current_price) relative to allocated_capital, since
+        the positions table does not store target_weight.
 
         Returns a list of OrderAction objects covering:
         - "buy"      — new position not currently held
@@ -804,17 +815,33 @@ class StrategyEngine:
         - "decrease" — held and recommended at a lower weight
         - "hold"     — held and recommended at similar weight (±1%)
         """
+        market_data = market_data or {}
+
         # Build lookup of recommended positions by symbol
         recommended: dict[str, Any] = {}
         for pos in output.positions:
             recommended[pos.symbol] = pos
 
-        # Build lookup of current positions by symbol
+        # Build lookup of current positions by symbol, computing weight
+        # from shares * price / allocated_capital.
         current: dict[str, dict[str, Any]] = {}
         for p in current_positions:
             sym = p.get("ticker", p.get("symbol", ""))
             if sym:
                 current[sym] = p
+
+        def _calc_weight(sym: str, p: dict) -> float:
+            """Compute current portfolio weight for a held position."""
+            if allocated_capital <= 0:
+                return 0.0
+            shares = float(p.get("shares", 0) or 0)
+            price = float(
+                p.get("current_price")
+                or (market_data.get(sym) or {}).get("current_price")
+                or p.get("entry_price")
+                or 0
+            )
+            return (shares * price) / allocated_capital if price > 0 else 0.0
 
         actions: list[OrderAction] = []
 
@@ -822,7 +849,7 @@ class StrategyEngine:
         for sym, pos in recommended.items():
             if sym in current:
                 # Already held — compare weights
-                cur_weight = float(current[sym].get("target_weight", 0) or 0)
+                cur_weight = _calc_weight(sym, current[sym])
                 diff = pos.target_weight - cur_weight
 
                 if abs(diff) < 0.01:
@@ -861,7 +888,7 @@ class StrategyEngine:
         # 2. Check for exits: currently held but not recommended
         for sym, p in current.items():
             if sym not in recommended:
-                cur_weight = float(p.get("target_weight", 0) or 0)
+                cur_weight = _calc_weight(sym, p)
                 actions.append(
                     OrderAction(
                         symbol=sym,
