@@ -19,7 +19,7 @@ agents to trade at multiple points throughout the day.
 import asyncio
 import logging
 import sys
-from datetime import datetime, date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any  # noqa: F401
 
