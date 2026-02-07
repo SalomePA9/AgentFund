@@ -279,6 +279,12 @@ class StrategyEngine:
 
             regime = integrator._detect_regime(sentiment_data).label
 
+            # Step 6b: Scale new position weights to fit within available
+            # cash.  If cash_balance is set, compute the fraction of
+            # allocated_capital that is still available and scale down
+            # new entries proportionally.
+            self._constrain_to_cash(output, ctx)
+
             # Step 7: Diff recommended positions against current holdings
             # to produce concrete buy/sell/hold order actions.
             order_actions = self._diff_positions(output, ctx.current_positions)
@@ -588,6 +594,67 @@ class StrategyEngine:
                 parts.append(f"Horizon: {pos.max_holding_days}d")
 
             action.reason = " | ".join(parts)
+
+    # ------------------------------------------------------------------
+    # Cash-constrained position sizing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _constrain_to_cash(
+        output: "StrategyOutput",
+        ctx: AgentContext,
+    ) -> None:
+        """
+        Scale down recommended new-position weights so the total
+        notional value of new buys does not exceed the agent's
+        available cash.
+
+        Existing positions (already held) are not affected.
+        If ``cash_balance`` is 0 or allocated_capital is 0, no
+        constraining is performed (the broker-side buying power
+        check in execute_orders acts as the final gate).
+        """
+        if ctx.allocated_capital <= 0 or ctx.cash_balance <= 0:
+            return
+        if not output or not output.positions:
+            return
+
+        # What fraction of allocated capital is available as cash?
+        cash_fraction = ctx.cash_balance / ctx.allocated_capital
+        if cash_fraction >= 1.0:
+            return  # fully liquid — no constraint needed
+
+        # Identify which symbols are NEW (not already held)
+        held_syms = {
+            p.get("ticker", p.get("symbol", ""))
+            for p in ctx.current_positions
+        }
+
+        new_weight_total = sum(
+            p.target_weight
+            for p in output.positions
+            if p.symbol not in held_syms
+        )
+
+        if new_weight_total <= 0:
+            return
+
+        # If new buys exceed cash, scale them down proportionally
+        if new_weight_total > cash_fraction:
+            scale = cash_fraction / new_weight_total
+            for p in output.positions:
+                if p.symbol not in held_syms:
+                    p.target_weight *= scale
+
+            logger.info(
+                "Agent %s: scaled new positions by %.2f "
+                "(cash=%.2f, allocated=%.2f, new_wt=%.2f)",
+                ctx.agent_id,
+                scale,
+                ctx.cash_balance,
+                ctx.allocated_capital,
+                new_weight_total,
+            )
 
     # ------------------------------------------------------------------
     # Rebalance frequency gate
