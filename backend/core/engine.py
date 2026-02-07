@@ -282,6 +282,21 @@ class StrategyEngine:
             # to produce concrete buy/sell/hold order actions.
             order_actions = self._diff_positions(output, ctx.current_positions)
 
+            # Step 8: Stop-loss check — scan current positions for any
+            # that have breached their stop price and inject sell actions.
+            stop_exits = self._check_stop_losses(ctx, market_data)
+            if stop_exits:
+                logger.warning(
+                    "Agent %s: %d positions breached stop-loss",
+                    ctx.agent_id,
+                    len(stop_exits),
+                )
+                # Merge stop exits into order_actions (overriding any hold/increase)
+                stop_syms = {a.symbol for a in stop_exits}
+                order_actions = [
+                    a for a in order_actions if a.symbol not in stop_syms
+                ] + stop_exits
+
             logger.info(
                 "Agent %s: strategy produced %d positions, "
                 "%d order actions | regime=%s",
@@ -306,6 +321,66 @@ class StrategyEngine:
                 str(e),
             )
             return ExecutionResult(agent_id=ctx.agent_id, error=str(e))
+
+    # ------------------------------------------------------------------
+    # Stop-loss monitoring
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_stop_losses(
+        ctx: AgentContext,
+        market_data: dict[str, dict[str, Any]],
+    ) -> list[OrderAction]:
+        """
+        Check current positions against their stop-loss prices.
+
+        If a position's current market price has breached its stop, produce
+        a sell action so the execution layer exits the position.
+
+        Positions are expected to have ``stop_loss`` and ``side`` fields,
+        set by the strategy's risk management pass.
+        """
+        exits: list[OrderAction] = []
+
+        for pos in ctx.current_positions:
+            sym = pos.get("ticker", pos.get("symbol", ""))
+            stop = pos.get("stop_loss")
+            side = pos.get("side", "long")
+
+            if not sym or stop is None:
+                continue
+
+            current_price = (market_data.get(sym) or {}).get("current_price")
+            if current_price is None:
+                continue
+
+            try:
+                stop = float(stop)
+                current_price = float(current_price)
+            except (TypeError, ValueError):
+                continue
+
+            breached = False
+            if side == "long" and current_price <= stop:
+                breached = True
+            elif side == "short" and current_price >= stop:
+                breached = True
+
+            if breached:
+                exits.append(
+                    OrderAction(
+                        symbol=sym,
+                        action="sell",
+                        target_weight=0.0,
+                        current_weight=float(pos.get("target_weight", 0) or 0),
+                        reason=(
+                            f"Stop-loss breached: price {current_price:.2f} "
+                            f"{'<=' if side == 'long' else '>='} stop {stop:.2f}"
+                        ),
+                    )
+                )
+
+        return exits
 
     # ------------------------------------------------------------------
     # Rebalance frequency gate
