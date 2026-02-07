@@ -441,9 +441,29 @@ class BaseStrategy(ABC):
     ) -> list[Position]:
         """Apply risk management rules to positions."""
         risk_cfg = self.config.risk
-        adjusted_positions = []
 
-        # Calculate total exposure
+        # 1. Cap individual position sizes
+        for pos in positions:
+            pos.target_weight = min(pos.target_weight, risk_cfg.max_position_size)
+
+        # 2. Enforce sector concentration limits
+        sector_weights: dict[str, float] = {}
+        for pos in positions:
+            sector = (market_data.get(pos.symbol) or {}).get("sector", "Unknown")
+            sector_weights[sector] = sector_weights.get(sector, 0.0) + pos.target_weight
+
+        for sector, total_wt in sector_weights.items():
+            if total_wt > risk_cfg.max_sector_exposure:
+                # Scale down all positions in this sector proportionally
+                scale = risk_cfg.max_sector_exposure / total_wt
+                for pos in positions:
+                    pos_sector = (market_data.get(pos.symbol) or {}).get(
+                        "sector", "Unknown"
+                    )
+                    if pos_sector == sector:
+                        pos.target_weight *= scale
+
+        # 3. Scale down if over leverage limit
         total_long = sum(
             p.target_weight for p in positions if p.side == PositionSide.LONG
         )
@@ -452,28 +472,29 @@ class BaseStrategy(ABC):
         )
         gross_exposure = total_long + total_short
 
-        # Scale down if over leverage limit
         scale_factor = 1.0
         if gross_exposure > risk_cfg.max_portfolio_leverage:
             scale_factor = risk_cfg.max_portfolio_leverage / gross_exposure
 
+        adjusted_positions = []
         for pos in positions:
-            # Cap individual position size
-            pos.target_weight = min(pos.target_weight, risk_cfg.max_position_size)
-
-            # Apply leverage scaling
             pos.target_weight *= scale_factor
 
-            # Set stop loss based on ATR if available
+            # 4. Set stop loss based on ATR if available
             symbol_data = market_data.get(pos.symbol, {})
             atr = symbol_data.get("atr")
             price = symbol_data.get("current_price")
 
             if atr and price and pos.stop_loss is None:
-                if pos.side == PositionSide.LONG:
-                    pos.stop_loss = price - (atr * risk_cfg.stop_loss_atr_multiple)
-                elif pos.side == PositionSide.SHORT:
-                    pos.stop_loss = price + (atr * risk_cfg.stop_loss_atr_multiple)
+                try:
+                    atr = float(atr)
+                    price = float(price)
+                    if pos.side == PositionSide.LONG:
+                        pos.stop_loss = price - (atr * risk_cfg.stop_loss_atr_multiple)
+                    elif pos.side == PositionSide.SHORT:
+                        pos.stop_loss = price + (atr * risk_cfg.stop_loss_atr_multiple)
+                except (TypeError, ValueError):
+                    pass
 
             adjusted_positions.append(pos)
 
