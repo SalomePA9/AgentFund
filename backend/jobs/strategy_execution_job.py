@@ -267,11 +267,18 @@ async def execute_orders(
                 qty = int(notional / price)
                 if qty <= 0:
                     continue
-                order = broker.place_market_order(action.symbol, qty, "buy")
+                # Use limit order at +0.5% for better fill quality
+                limit_price = round(price * 1.005, 2)
+                order = broker.place_limit_order(
+                    action.symbol, qty, "buy",
+                    limit_price=limit_price,
+                    time_in_force="day",
+                )
                 remaining_bp -= qty * price
                 order_results.append(order)
 
             elif action.action == "sell":
+                # Market order for exits — guaranteed fill
                 order = broker.close_position(action.symbol)
                 # Reclaim buying power from sell proceeds
                 sold_qty = float(order.get("qty") or 0)
@@ -288,7 +295,12 @@ async def execute_orders(
                 qty = int(notional / price)
                 if qty <= 0:
                     continue
-                order = broker.place_market_order(action.symbol, qty, "buy")
+                limit_price = round(price * 1.005, 2)
+                order = broker.place_limit_order(
+                    action.symbol, qty, "buy",
+                    limit_price=limit_price,
+                    time_in_force="day",
+                )
                 remaining_bp -= qty * price
                 order_results.append(order)
 
@@ -300,7 +312,13 @@ async def execute_orders(
                 qty = int(notional / price)
                 if qty <= 0:
                     continue
-                order = broker.place_market_order(action.symbol, qty, "sell")
+                # Limit sell at -0.5% for orderly exit
+                limit_price = round(price * 0.995, 2)
+                order = broker.place_limit_order(
+                    action.symbol, qty, "sell",
+                    limit_price=limit_price,
+                    time_in_force="day",
+                )
                 remaining_bp += qty * price
                 order_results.append(order)
 
