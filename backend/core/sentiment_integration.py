@@ -87,6 +87,7 @@ class MarketRegime:
     label: str  # "risk_on", "neutral", "risk_off"
     aggregate_sentiment: float  # average combined_sentiment across universe
     breadth: float  # fraction of stocks with positive sentiment
+    regime_strength: float = 0.0  # continuous [-1, +1]: -1=risk_off, +1=risk_on
     momentum_tilt: float = 0.0
     value_tilt: float = 0.0
     quality_tilt: float = 0.0
@@ -590,6 +591,12 @@ class SentimentFactorIntegrator:
     def _detect_regime(self, sentiment_data: dict[str, SentimentInput]) -> MarketRegime:
         """
         Detect market regime from aggregate sentiment across the universe.
+
+        Uses continuous interpolation instead of hard thresholds so the
+        regime transitions smoothly.  A ``regime_strength`` in [0, 1]
+        indicates how strongly the regime leans risk-on or risk-off,
+        which is used by ``_apply_regime_tilts`` to scale the tilt
+        proportionally rather than applying full tilts at a binary edge.
         """
         scores = [
             s.combined_sentiment
@@ -603,34 +610,53 @@ class SentimentFactorIntegrator:
         agg = float(np.mean(scores))
         breadth = sum(1 for s in scores if s > 0) / len(scores)
 
-        if agg > 15 and breadth > 0.55:
+        # Continuous regime strength via sigmoid-like mapping.
+        # Maps aggregate sentiment to [-1, +1] where:
+        #   +1 = strong risk-on, -1 = strong risk-off, 0 = neutral.
+        # The sigmoid saturates around ±40 so very extreme sentiment
+        # doesn't produce unbounded values.
+        regime_strength = float(np.tanh(agg / 25.0))
+
+        # Also incorporate breadth (fraction of positive stocks)
+        # Breadth of 0.5 = neutral, 0.7+ = risk-on, 0.3- = risk-off
+        breadth_signal = (breadth - 0.5) * 2.0  # [-1, +1]
+        regime_strength = 0.6 * regime_strength + 0.4 * breadth_signal
+        regime_strength = max(-1.0, min(1.0, regime_strength))
+
+        # Label for logging (still useful for human-readable output)
+        if regime_strength > 0.2:
             label = "risk_on"
-        elif agg < -15 and breadth < 0.45:
+        elif regime_strength < -0.2:
             label = "risk_off"
         else:
             label = "neutral"
 
-        return MarketRegime(label=label, aggregate_sentiment=agg, breadth=breadth)
+        regime = MarketRegime(label=label, aggregate_sentiment=agg, breadth=breadth)
+        # Store the continuous strength for proportional tilt scaling
+        regime.regime_strength = regime_strength
+        return regime
 
     def _apply_regime_tilts(self, regime: MarketRegime) -> dict[str, float]:
         """
         Adjust base factor weights based on the detected regime.
 
-        Risk-on: tilt toward momentum and sentiment.
-        Risk-off: tilt toward quality, value, and low-vol.
-        Neutral: use base weights unchanged.
+        Uses the continuous ``regime_strength`` to scale tilts
+        proportionally.  A strength of +1.0 applies the full risk-on
+        tilt; +0.3 applies 30% of the tilt; 0.0 leaves weights
+        unchanged; -0.5 applies 50% of the risk-off tilt; etc.
         """
         weights = dict(self._base_weights)
+        strength = regime.regime_strength
 
-        if regime.label == "risk_on":
-            tilts = _RISK_ON_TILTS
-        elif regime.label == "risk_off":
-            tilts = _RISK_OFF_TILTS
-        else:
-            return weights
+        if abs(strength) < 0.05:
+            return weights  # near-neutral: no tilt needed
+
+        # Pick tilt direction based on sign; scale by magnitude
+        tilts = _RISK_ON_TILTS if strength > 0 else _RISK_OFF_TILTS
+        scale = abs(strength)
 
         for factor, delta in tilts.items():
-            weights[factor] = weights.get(factor, 0.0) + delta
+            weights[factor] = weights.get(factor, 0.0) + delta * scale
 
         # Ensure no negative weights, then renormalise
         for k in weights:
