@@ -480,6 +480,10 @@ class SentimentFactorIntegrator:
         """
         Reward when sentiment direction agrees with the dominant factor signal.
 
+        Uses the strategy's own factor weights (from ``_base_weights``) to
+        compute a weighted factor direction, so a momentum strategy checks
+        convergence mainly with momentum, a value strategy with value, etc.
+
         A stock in the top factor quintile with bullish sentiment gets a bonus.
         Disagreement (strong factors + bearish sentiment) applies a penalty.
 
@@ -489,15 +493,27 @@ class SentimentFactorIntegrator:
         if combined is None:
             return 0.0
 
-        # Compute a "factor direction" from the average factor percentile.
-        # >50 = bullish factor signal, <50 = bearish.
-        avg_factor = np.mean(
-            [
-                factors.get("momentum_score", 50.0),
-                factors.get("quality_score", 50.0),
-                factors.get("value_score", 50.0),
-            ]
-        )
+        # Map base weight keys to factor score keys
+        _WEIGHT_TO_SCORE = {
+            "momentum": "momentum_score",
+            "value": "value_score",
+            "quality": "quality_score",
+            "dividend": "dividend_score",
+            "volatility": "volatility_score",
+        }
+
+        # Compute strategy-weighted factor direction instead of hardcoded
+        # average of momentum/quality/value.
+        weighted_sum = 0.0
+        total_weight = 0.0
+        for wk, sk in _WEIGHT_TO_SCORE.items():
+            w = self._base_weights.get(wk, 0.0)
+            if w > 0:
+                weighted_sum += w * factors.get(sk, 50.0)
+                total_weight += w
+
+        avg_factor = weighted_sum / total_weight if total_weight > 0 else 50.0
+
         factor_z = (avg_factor - 50.0) / 50.0  # [-1, +1]
         sentiment_z = combined / 100.0  # [-1, +1]
 
