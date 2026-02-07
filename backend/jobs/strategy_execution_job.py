@@ -201,10 +201,12 @@ async def execute_orders(
     mode = BrokerMode.PAPER if paper else BrokerMode.LIVE
     broker = AlpacaBroker(api_key, api_secret, mode)
 
-    # Get account equity to convert weights → share counts
+    # Get account details — use buying_power for cash awareness
     try:
         account = broker.get_account()
         equity = account.get("equity", 0.0)
+        buying_power = account.get("buying_power", 0.0)
+        cash = account.get("cash", 0.0)
     except Exception as e:
         logger.error("Agent %s: failed to get account — %s", result.agent_id, e)
         return []
@@ -213,9 +215,34 @@ async def execute_orders(
         logger.warning("Agent %s: account equity is zero", result.agent_id)
         return []
 
+    # Use the agent's allocated_capital as the sizing basis (not full
+    # account equity) so multiple agents sharing one Alpaca account
+    # don't over-allocate.  Fall back to equity if not set.
+    allocated = float(agent.get("allocated_capital", 0)) or equity
+    sizing_basis = min(allocated, equity)
+
+    # Track remaining buying power as we place orders.  Start from the
+    # lesser of broker buying_power and allocated capital so we never
+    # exceed either constraint.
+    remaining_bp = min(buying_power, allocated)
+
+    logger.info(
+        "Agent %s: equity=%.2f buying_power=%.2f allocated=%.2f sizing_basis=%.2f",
+        result.agent_id,
+        equity,
+        buying_power,
+        allocated,
+        sizing_basis,
+    )
+
     order_results: list[dict] = []
 
-    for action in result.order_actions:
+    # Process sells first to free up buying power before buys
+    sell_actions = [a for a in result.order_actions if a.action in ("sell", "decrease")]
+    buy_actions = [a for a in result.order_actions if a.action in ("buy", "increase")]
+    hold_actions = [a for a in result.order_actions if a.action == "hold"]
+
+    for action in sell_actions + buy_actions + hold_actions:
         if action.action == "hold":
             continue
 
@@ -226,39 +253,55 @@ async def execute_orders(
 
         try:
             if action.action == "buy":
-                # New position: target_weight * equity / price = shares
-                notional = action.target_weight * equity
+                notional = action.target_weight * sizing_basis
+                # Cap to remaining buying power
+                if notional > remaining_bp:
+                    logger.info(
+                        "Agent %s: capping %s buy from %.2f to %.2f (buying power)",
+                        result.agent_id,
+                        action.symbol,
+                        notional,
+                        remaining_bp,
+                    )
+                    notional = remaining_bp
                 qty = int(notional / price)
                 if qty <= 0:
                     continue
                 order = broker.place_market_order(action.symbol, qty, "buy")
+                remaining_bp -= qty * price
                 order_results.append(order)
 
             elif action.action == "sell":
-                # Full exit
                 order = broker.close_position(action.symbol)
+                # Reclaim buying power from sell proceeds
+                sold_qty = float(order.get("qty") or 0)
+                remaining_bp += sold_qty * price
                 order_results.append(order)
 
             elif action.action == "increase":
                 delta_weight = action.target_weight - action.current_weight
                 if delta_weight <= 0:
                     continue
-                notional = delta_weight * equity
+                notional = delta_weight * sizing_basis
+                if notional > remaining_bp:
+                    notional = remaining_bp
                 qty = int(notional / price)
                 if qty <= 0:
                     continue
                 order = broker.place_market_order(action.symbol, qty, "buy")
+                remaining_bp -= qty * price
                 order_results.append(order)
 
             elif action.action == "decrease":
                 delta_weight = action.current_weight - action.target_weight
                 if delta_weight <= 0:
                     continue
-                notional = delta_weight * equity
+                notional = delta_weight * sizing_basis
                 qty = int(notional / price)
                 if qty <= 0:
                     continue
                 order = broker.place_market_order(action.symbol, qty, "sell")
+                remaining_bp += qty * price
                 order_results.append(order)
 
         except Exception as e:
@@ -273,7 +316,12 @@ async def execute_orders(
                 {"symbol": action.symbol, "action": action.action, "error": str(e)}
             )
 
-    logger.info("Agent %s: submitted %d orders", result.agent_id, len(order_results))
+    logger.info(
+        "Agent %s: submitted %d orders, remaining_bp=%.2f",
+        result.agent_id,
+        len(order_results),
+        remaining_bp,
+    )
     return order_results
 
 
