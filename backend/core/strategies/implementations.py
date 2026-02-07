@@ -314,6 +314,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         bottom_pct = params.get("bottom_percentile", 20)
         allow_short = params.get("allow_short", False)
         equal_weight = params.get("equal_weight", True)
+        max_holding = params.get("max_holding_days", 180)  # ~2 quarters
         market_data = market_data or {}
 
         # Combine signals from signal generators
@@ -384,6 +385,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
                     side=PositionSide.LONG,
                     target_weight=weight,
                     signal_strength=score,
+                    max_holding_days=max_holding,
                     metadata={
                         "strategy": "cross_sectional_factor",
                         "composite_score": score,
@@ -415,6 +417,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
                         side=PositionSide.SHORT,
                         target_weight=weight,
                         signal_strength=abs(score),
+                        max_holding_days=max_holding,
                         metadata={
                             "strategy": "cross_sectional_factor",
                             "composite_score": score,
