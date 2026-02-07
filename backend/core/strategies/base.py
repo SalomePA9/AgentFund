@@ -565,6 +565,36 @@ class BaseStrategy(ABC):
 
         return accepted
 
+    @staticmethod
+    def _apply_hysteresis(
+        positions: list["Position"],
+        current_positions: dict[str, Any] | None,
+        band: float = 5.0,
+    ) -> list["Position"]:
+        """
+        Apply a hysteresis band to positions: currently-held positions get
+        a stickiness bonus to their signal_strength so they are less likely
+        to be replaced by marginal candidates.  Also prevents direction
+        flips unless the new signal exceeds the band.
+
+        Returns a filtered list with adjusted signal strengths.
+        """
+        if not current_positions or band <= 0:
+            return positions
+
+        adjusted = []
+        for pos in positions:
+            if pos.symbol in current_positions:
+                cur = current_positions[pos.symbol]
+                cur_side = cur.get("side", "long")
+                # Boost signal strength for incumbents (keeps them in)
+                pos.signal_strength += band
+                # If direction is flipping, require extra conviction
+                if (pos.side.value != cur_side) and pos.signal_strength < band * 2:
+                    continue  # not enough conviction to flip
+            adjusted.append(pos)
+        return adjusted
+
     def _calculate_risk_metrics(
         self, positions: list[Position], market_data: dict[str, Any]
     ) -> dict:

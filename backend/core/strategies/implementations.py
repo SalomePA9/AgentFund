@@ -183,6 +183,12 @@ class TrendFollowingStrategy(BaseStrategy):
                 )
             )
 
+        # Apply hysteresis to reduce whipsaw from MA crossover flips
+        hysteresis_band = params.get("hysteresis_band", 5.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
+
         return positions
 
 
@@ -550,6 +556,12 @@ class ShortTermReversalStrategy(BaseStrategy):
                 )
             )
 
+        # Apply hysteresis to reduce churn in short-horizon signals
+        hysteresis_band = params.get("hysteresis_band", 3.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
+
         # Balance for market neutrality if required
         if market_neutral:
             positions = self._balance_market_neutral(positions)
@@ -755,6 +767,12 @@ class StatisticalArbitrageStrategy(BaseStrategy):
                         )
                     )
 
+        # Apply hysteresis
+        hysteresis_band = params.get("hysteresis_band", 4.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
+
         return positions
 
 
@@ -920,6 +938,12 @@ class VolatilityPremiumStrategy(BaseStrategy):
                         },
                     )
                 )
+
+        # Apply hysteresis — vol premium is a low-turnover strategy
+        hysteresis_band = params.get("hysteresis_band", 6.0)
+        positions = self._apply_hysteresis(
+            positions, current_positions, hysteresis_band
+        )
 
         return positions
 
