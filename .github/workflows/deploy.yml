@@ -7,7 +7,7 @@ on:
 
 jobs:
   # ============================================
-  # Deploy Backend to Railway
+  # Deploy Backend to Render
   # ============================================
   deploy-backend:
     name: Deploy Backend
@@ -15,18 +15,15 @@ jobs:
     environment: production
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy to Railway
+      - name: Trigger Render Deploy
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          cd backend
-          railway up --service agentfund-backend || echo "Railway deployment skipped - configure RAILWAY_TOKEN"
+          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
+            curl -s "$RENDER_DEPLOY_HOOK_URL" && echo "Render deployment triggered"
+          else
+            echo "Render deployment skipped - configure RENDER_DEPLOY_HOOK_URL secret"
+          fi
 
   # ============================================
   # Deploy Frontend to Vercel
