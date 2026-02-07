@@ -499,9 +499,9 @@ class StrategyEngine:
         Uses ``max_holding_days`` from strategy_params or risk_params.
         Compares against the position's ``entry_date`` field.
         """
-        max_days = ctx.strategy_params.get(
+        max_days = ctx.strategy_params.get("max_holding_days") or ctx.risk_params.get(
             "max_holding_days"
-        ) or ctx.risk_params.get("max_holding_days")
+        )
 
         if not max_days:
             return []
@@ -631,14 +631,11 @@ class StrategyEngine:
 
         # Identify which symbols are NEW (not already held)
         held_syms = {
-            p.get("ticker", p.get("symbol", ""))
-            for p in ctx.current_positions
+            p.get("ticker", p.get("symbol", "")) for p in ctx.current_positions
         }
 
         new_weight_total = sum(
-            p.target_weight
-            for p in output.positions
-            if p.symbol not in held_syms
+            p.target_weight for p in output.positions if p.symbol not in held_syms
         )
 
         if new_weight_total <= 0:

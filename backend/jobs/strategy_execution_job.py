@@ -284,7 +284,9 @@ async def execute_orders(
                 # Use limit order at +0.5% for better fill quality
                 limit_price = round(price * 1.005, 2)
                 order = broker.place_limit_order(
-                    action.symbol, qty, "buy",
+                    action.symbol,
+                    qty,
+                    "buy",
                     limit_price=limit_price,
                     time_in_force="day",
                 )
@@ -311,7 +313,9 @@ async def execute_orders(
                     continue
                 limit_price = round(price * 1.005, 2)
                 order = broker.place_limit_order(
-                    action.symbol, qty, "buy",
+                    action.symbol,
+                    qty,
+                    "buy",
                     limit_price=limit_price,
                     time_in_force="day",
                 )
@@ -329,7 +333,9 @@ async def execute_orders(
                 # Limit sell at -0.5% for orderly exit
                 limit_price = round(price * 0.995, 2)
                 order = broker.place_limit_order(
-                    action.symbol, qty, "sell",
+                    action.symbol,
+                    qty,
+                    "sell",
                     limit_price=limit_price,
                     time_in_force="day",
                 )
@@ -443,7 +449,10 @@ def _cancel_gtc_orders(broker, pos_row: dict) -> None:
             broker.cancel_order(stop_oid)
             logger.info("Cancelled GTC stop order %s", stop_oid)
         except Exception:
-            logger.debug("Could not cancel stop order %s (may already be filled/cancelled)", stop_oid)
+            logger.debug(
+                "Could not cancel stop order %s (may already be filled/cancelled)",
+                stop_oid,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -699,9 +708,9 @@ async def sync_agent_cash_balance(
     cash = max(0.0, cash)
 
     try:
-        supabase.table("agents").update(
-            {"cash_balance": round(cash, 2)}
-        ).eq("id", agent_id).execute()
+        supabase.table("agents").update({"cash_balance": round(cash, 2)}).eq(
+            "id", agent_id
+        ).execute()
 
         logger.info(
             "Agent %s: cash_balance updated to %.2f",
@@ -877,7 +886,11 @@ async def run_strategy_execution_job() -> dict:
                 # Sync position records (create/update/close in DB)
                 # and place broker-side protective orders for new buys
                 await sync_positions(
-                    supabase, result, agent, orders, market_data,
+                    supabase,
+                    result,
+                    agent,
+                    orders,
+                    market_data,
                     broker=broker,
                 )
 

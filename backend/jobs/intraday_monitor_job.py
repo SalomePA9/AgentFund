@@ -97,13 +97,9 @@ def check_stop_loss(pos: dict, live_price: float) -> str | None:
     side = pos.get("side", "long")
 
     if side == "long" and live_price <= stop:
-        return (
-            f"Intraday stop-loss breached: price {live_price:.2f} <= stop {stop:.2f}"
-        )
+        return f"Intraday stop-loss breached: price {live_price:.2f} <= stop {stop:.2f}"
     if side == "short" and live_price >= stop:
-        return (
-            f"Intraday stop-loss breached: price {live_price:.2f} >= stop {stop:.2f}"
-        )
+        return f"Intraday stop-loss breached: price {live_price:.2f} >= stop {stop:.2f}"
     return None
 
 
@@ -184,7 +180,10 @@ async def execute_exit(
                 broker.cancel_order(stop_oid)
                 logger.info("Cancelled GTC stop order %s for %s", stop_oid, sym)
             except Exception:
-                logger.debug("Could not cancel stop order %s (may already be filled/cancelled)", stop_oid)
+                logger.debug(
+                    "Could not cancel stop order %s (may already be filled/cancelled)",
+                    stop_oid,
+                )
 
         # Close at broker
         order = broker.close_position(sym)
