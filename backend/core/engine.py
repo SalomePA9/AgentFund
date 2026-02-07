@@ -179,6 +179,13 @@ class StrategyEngine:
             if breaker_result is not None:
                 return breaker_result
 
+            # Step 0b: Rebalance frequency gate — skip execution if the
+            # agent has already rebalanced within its configured period.
+            skip_reason = self._check_rebalance_frequency(ctx)
+            if skip_reason:
+                logger.info("Agent %s: skipping — %s", ctx.agent_id, skip_reason)
+                return ExecutionResult(agent_id=ctx.agent_id, error=skip_reason)
+
             # Step 1: Resolve strategy config from agent settings
             config = self._resolve_strategy_config(ctx)
             logger.info(
@@ -299,6 +306,66 @@ class StrategyEngine:
                 str(e),
             )
             return ExecutionResult(agent_id=ctx.agent_id, error=str(e))
+
+    # ------------------------------------------------------------------
+    # Rebalance frequency gate
+    # ------------------------------------------------------------------
+
+    def _check_rebalance_frequency(self, ctx: AgentContext) -> str | None:
+        """
+        Check if enough time has passed since the agent's last rebalance.
+
+        Returns a skip-reason string if the agent should not execute, or
+        None if it's time to rebalance.
+        """
+        frequency = ctx.strategy_params.get("rebalance_frequency", "daily")
+
+        # Map frequency to minimum interval in days
+        freq_days = {"daily": 1, "weekly": 7, "monthly": 28}
+        min_days = freq_days.get(frequency, 1)
+
+        if min_days <= 1:
+            return None  # daily always runs
+
+        if not self._db:
+            return None  # can't check without DB
+
+        try:
+            result = (
+                self._db.table("agent_activity")
+                .select("created_at")
+                .eq("agent_id", ctx.agent_id)
+                .eq("activity_type", "rebalance")
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            if not result.data:
+                return None  # never rebalanced — run now
+
+            last_rebalance_str = result.data[0].get("created_at", "")
+            if not last_rebalance_str:
+                return None
+
+            last_dt = datetime.fromisoformat(last_rebalance_str.replace("Z", "+00:00"))
+            now = datetime.utcnow().replace(tzinfo=last_dt.tzinfo)
+            elapsed = (now - last_dt).days
+
+            if elapsed < min_days:
+                return (
+                    f"Rebalance frequency is {frequency} "
+                    f"({min_days}d) but only {elapsed}d since last rebalance"
+                )
+            return None
+
+        except Exception:
+            logger.warning(
+                "Agent %s: failed to check rebalance frequency — allowing run",
+                ctx.agent_id,
+                exc_info=True,
+            )
+            return None
 
     # ------------------------------------------------------------------
     # Drawdown circuit breaker
