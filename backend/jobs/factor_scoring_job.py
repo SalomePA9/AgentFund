@@ -243,14 +243,8 @@ async def run_factor_scoring_job() -> dict:
         scores = calculator.calculate_all(stock_data, sectors)
         logger.info(f"Calculated base scores for {len(scores)} stocks")
 
-        # Run sentiment-factor integration for each strategy type
+        # Run sentiment-factor integration
         logger.info("Running sentiment-factor integration...")
-        strategy_types = [
-            "momentum",
-            "quality_value",
-            "quality_momentum",
-            "dividend_growth",
-        ]
 
         # Build factor_data dict from calculated scores
         factor_data: dict[str, dict[str, float]] = {}
