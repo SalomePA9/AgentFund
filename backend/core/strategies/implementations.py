@@ -331,9 +331,21 @@ class CrossSectionalFactorStrategy(BaseStrategy):
                     + ic_normalised * integrated_weight
                 )
 
+        # Turnover hysteresis: give currently-held positions a stickiness
+        # bonus so they aren't replaced unless a new candidate outscores
+        # them by at least `hysteresis_band` points.  This prevents
+        # unnecessary churn and implicit transaction costs.
+        hysteresis_band = params.get("hysteresis_band", 5.0)
+        current_positions = current_positions or {}
+
+        ranking_scores = dict(combined_scores)
+        for sym in ranking_scores:
+            if sym in current_positions:
+                ranking_scores[sym] += hysteresis_band
+
         # Rank and select
         sorted_symbols = sorted(
-            combined_scores.keys(), key=lambda s: combined_scores[s], reverse=True
+            ranking_scores.keys(), key=lambda s: ranking_scores[s], reverse=True
         )
 
         n = len(sorted_symbols)
