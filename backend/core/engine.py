@@ -601,12 +601,16 @@ class StrategyEngine:
         """
         frequency = ctx.strategy_params.get("rebalance_frequency", "daily")
 
-        # Map frequency to minimum interval in days
-        freq_days = {"daily": 1, "weekly": 7, "monthly": 28}
-        min_days = freq_days.get(frequency, 1)
-
-        if min_days <= 1:
-            return None  # daily always runs
+        # Map frequency to minimum interval.
+        # "intraday" allows multiple runs per day with a configurable
+        # minimum interval in hours (default 1h) between executions.
+        freq_hours: dict[str, float] = {
+            "intraday": ctx.strategy_params.get("min_interval_hours", 1.0),
+            "daily": 24,
+            "weekly": 24 * 7,
+            "monthly": 24 * 28,
+        }
+        min_hours = freq_hours.get(frequency, 24)
 
         if not self._db:
             return None  # can't check without DB
@@ -631,12 +635,13 @@ class StrategyEngine:
 
             last_dt = datetime.fromisoformat(last_rebalance_str.replace("Z", "+00:00"))
             now = datetime.utcnow().replace(tzinfo=last_dt.tzinfo)
-            elapsed = (now - last_dt).days
+            elapsed_hours = (now - last_dt).total_seconds() / 3600
 
-            if elapsed < min_days:
+            if elapsed_hours < min_hours:
                 return (
                     f"Rebalance frequency is {frequency} "
-                    f"({min_days}d) but only {elapsed}d since last rebalance"
+                    f"(min {min_hours:.0f}h) but only "
+                    f"{elapsed_hours:.1f}h since last rebalance"
                 )
             return None
 
