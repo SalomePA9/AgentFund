@@ -589,7 +589,7 @@ async def sync_positions(
 
                 existing = (
                     supabase.table("positions")
-                    .select("id, shares")
+                    .select("id, shares, stop_order_id")
                     .eq("agent_id", agent_id)
                     .eq("ticker", sym)
                     .eq("status", "open")
@@ -605,11 +605,30 @@ async def sync_positions(
                     else:
                         new_shares = max(0, old_shares - float(delta_qty))
 
-                    update = {"shares": new_shares}
+                    update: dict[str, Any] = {"shares": new_shares}
+                    stop_price = None
+                    target_price_val = None
                     if rec and rec.stop_loss is not None:
-                        update["stop_loss_price"] = float(rec.stop_loss)
+                        stop_price = float(rec.stop_loss)
+                        update["stop_loss_price"] = stop_price
                     if rec and rec.take_profit is not None:
-                        update["target_price"] = float(rec.take_profit)
+                        target_price_val = float(rec.take_profit)
+                        update["target_price"] = target_price_val
+
+                    # Cancel old GTC stop order and place a new one at
+                    # the updated quantity so the full position is covered.
+                    if broker and new_shares > 0:
+                        _cancel_gtc_orders(broker, pos_row)
+                        bracket_ids = place_bracket_orders(
+                            broker,
+                            symbol=sym,
+                            qty=new_shares,
+                            stop_price=stop_price,
+                            target_price=target_price_val,
+                            side=rec.side.value if rec else "long",
+                        )
+                        if bracket_ids.get("stop_order_id"):
+                            update["stop_order_id"] = bracket_ids["stop_order_id"]
 
                     supabase.table("positions").update(update).eq(
                         "id", pos_row["id"]
