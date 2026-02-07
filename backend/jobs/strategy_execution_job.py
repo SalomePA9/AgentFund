@@ -23,12 +23,11 @@ _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from core.engine import (
+from core.engine import (  # noqa: E402
     AgentContext,
     ExecutionResult,
-    OrderAction,
     StrategyEngine,
-)  # noqa: E402
+)
 from core.sentiment_integration import SentimentInput  # noqa: E402
 from database import get_supabase_client  # noqa: E402
 
@@ -222,7 +221,6 @@ async def execute_orders(
         account = broker.get_account()
         equity = account.get("equity", 0.0)
         buying_power = account.get("buying_power", 0.0)
-        cash = account.get("cash", 0.0)
     except Exception as e:
         logger.error("Agent %s: failed to get account — %s", result.agent_id, e)
         return [], broker

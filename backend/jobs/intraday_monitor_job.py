@@ -21,7 +21,7 @@ import logging
 import sys
 from datetime import datetime, date
 from pathlib import Path
-from typing import Any
+from typing import Any  # noqa: F401
 
 # Add parent directory to path for imports when running as script
 _backend_dir = Path(__file__).resolve().parent.parent
