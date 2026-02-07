@@ -215,7 +215,13 @@ class StrategyEngine:
                     "sentiment_velocity": si.velocity,
                 }
 
-            # Step 5: Instantiate and execute strategy
+            # Step 5: Inject integrated composite scores into market_data so
+            # strategy.construct_portfolio() can use them for final ranking.
+            for sym, iscore in integrated.items():
+                if sym in market_data:
+                    market_data[sym]["integrated_composite"] = iscore.composite_score
+
+            # Step 6: Instantiate and execute strategy
             strategy = StrategyRegistry.create(config)
             output = await strategy.execute(
                 market_data=market_data,

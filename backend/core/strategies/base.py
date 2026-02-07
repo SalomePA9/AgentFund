@@ -307,7 +307,10 @@ class BaseStrategy(ABC):
 
     @abstractmethod
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Convert signals into position recommendations.
@@ -315,6 +318,7 @@ class BaseStrategy(ABC):
         Args:
             signals: List of signals from generate_signals()
             current_positions: Current portfolio positions (for turnover control)
+            market_data: Market data dict (may contain integrated_composite scores)
 
         Returns:
             List of Position recommendations
@@ -345,8 +349,10 @@ class BaseStrategy(ABC):
         if self.config.sentiment.mode != SentimentMode.DISABLED and sentiment_data:
             signals = self._apply_sentiment_overlay(signals, sentiment_data)
 
-        # Construct portfolio
-        positions = await self.construct_portfolio(signals, current_positions)
+        # Construct portfolio (pass market_data for integrated score access)
+        positions = await self.construct_portfolio(
+            signals, current_positions, market_data=market_data
+        )
 
         # Apply risk management
         positions = self._apply_risk_management(positions, market_data)

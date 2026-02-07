@@ -117,7 +117,10 @@ class TrendFollowingStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct trend-following portfolio.
@@ -285,12 +288,17 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct factor portfolio.
 
-        Uses weighted composite score to rank stocks.
+        Uses weighted composite score to rank stocks.  When the engine has
+        pre-computed integrated composite scores (via SentimentFactorIntegrator),
+        those are blended in to give sentiment-aware ranking.
         Takes top N% long, bottom N% short (if enabled).
         """
         params = self.config.custom_params
@@ -298,13 +306,30 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         bottom_pct = params.get("bottom_percentile", 20)
         allow_short = params.get("allow_short", False)
         equal_weight = params.get("equal_weight", True)
+        market_data = market_data or {}
 
-        # Combine signals
+        # Combine signals from signal generators
         combiner = SignalCombiner(weights=self.factor_weights)
         combined_scores = combiner.combine(signals, method="weighted_average")
 
         if not combined_scores:
             return []
+
+        # Blend with pre-computed integrated composite scores when available.
+        # Integrated scores are on a 0-100 scale; signal combiner scores are
+        # on a -100 to +100 scale.  Normalise integrated to the same range
+        # and blend at 40% weight so the 7-layer integration meaningfully
+        # influences final ranking without completely overriding signals.
+        integrated_weight = 0.4
+        for sym in list(combined_scores.keys()):
+            ic = (market_data.get(sym) or {}).get("integrated_composite")
+            if ic is not None:
+                # Convert 0-100 → -100 to +100
+                ic_normalised = (ic - 50.0) * 2.0
+                combined_scores[sym] = (
+                    combined_scores[sym] * (1.0 - integrated_weight)
+                    + ic_normalised * integrated_weight
+                )
 
         # Rank and select
         sorted_symbols = sorted(
@@ -439,7 +464,10 @@ class ShortTermReversalStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct reversal portfolio.
@@ -605,7 +633,10 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct stat arb portfolio.
@@ -779,7 +810,10 @@ class VolatilityPremiumStrategy(BaseStrategy):
         return all_signals
 
     async def construct_portfolio(
-        self, signals: list[Signal], current_positions: dict[str, Any] | None = None
+        self,
+        signals: list[Signal],
+        current_positions: dict[str, Any] | None = None,
+        market_data: dict[str, Any] | None = None,
     ) -> list[Position]:
         """
         Construct vol premium portfolio.
