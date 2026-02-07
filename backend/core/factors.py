@@ -24,6 +24,10 @@ class FactorScores:
     volatility_score: float
     composite_score: float
 
+    # Sentiment-derived scores (populated when sentiment data is available)
+    sentiment_score: float = 50.0  # 0-100, derived from combined_sentiment
+    integrated_composite: float | None = None  # Sentiment-factor blended score
+
     # Component details for debugging/transparency
     momentum_6m: float | None = None
     momentum_12m: float | None = None

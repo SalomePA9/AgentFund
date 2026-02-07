@@ -247,6 +247,10 @@ CREATE TABLE IF NOT EXISTS stocks (
     combined_sentiment DECIMAL(6, 2),
     sentiment_velocity DECIMAL(6, 2),
 
+    -- Sentiment-factor integration scores (0-100)
+    sentiment_score DECIMAL(6, 2),          -- normalised combined sentiment
+    integrated_composite DECIMAL(6, 2),     -- blended factor+sentiment composite
+
     -- Timestamps
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     scores_updated_at TIMESTAMPTZ
@@ -258,6 +262,7 @@ CREATE INDEX idx_stocks_momentum_score ON stocks(momentum_score DESC);
 CREATE INDEX idx_stocks_value_score ON stocks(value_score DESC);
 CREATE INDEX idx_stocks_quality_score ON stocks(quality_score DESC);
 CREATE INDEX idx_stocks_composite_score ON stocks(composite_score DESC);
+CREATE INDEX idx_stocks_integrated_composite ON stocks(integrated_composite DESC);
 
 -- ============================================================================
 -- PRICE HISTORY TABLE
