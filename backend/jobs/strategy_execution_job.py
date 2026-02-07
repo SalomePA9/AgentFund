@@ -22,7 +22,12 @@ _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from core.engine import AgentContext, ExecutionResult, StrategyEngine  # noqa: E402
+from core.engine import (
+    AgentContext,
+    ExecutionResult,
+    OrderAction,
+    StrategyEngine,
+)  # noqa: E402
 from core.sentiment_integration import SentimentInput  # noqa: E402
 from database import get_supabase_client  # noqa: E402
 
@@ -176,19 +181,26 @@ async def save_execution_result(
             }
         ).execute()
 
-        # Log each position recommendation
-        for pos in output.positions:
+        # Log each order action (buy/sell/hold/increase/decrease)
+        for action in result.order_actions:
+            activity_type = "signal"
+            if action.action in ("buy", "increase"):
+                activity_type = "buy"
+            elif action.action in ("sell", "decrease"):
+                activity_type = "sell"
+
             supabase.table("agent_activity").insert(
                 {
                     "agent_id": result.agent_id,
-                    "activity_type": "signal",
-                    "ticker": pos.symbol,
+                    "activity_type": activity_type,
+                    "ticker": action.symbol,
                     "details": {
-                        "side": pos.side.value,
-                        "target_weight": pos.target_weight,
-                        "signal_strength": pos.signal_strength,
-                        "integrated_score": result.integrated_scores.get(pos.symbol),
-                        "metadata": pos.metadata,
+                        "order_action": action.action,
+                        "target_weight": action.target_weight,
+                        "current_weight": action.current_weight,
+                        "signal_strength": action.signal_strength,
+                        "integrated_score": result.integrated_scores.get(action.symbol),
+                        "reason": action.reason,
                     },
                 }
             ).execute()

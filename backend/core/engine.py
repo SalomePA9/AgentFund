@@ -105,12 +105,25 @@ class AgentContext:
 
 
 @dataclass
+class OrderAction:
+    """A concrete order action produced by diffing recommended vs current positions."""
+
+    symbol: str
+    action: str  # "buy", "sell", "hold", "increase", "decrease"
+    target_weight: float  # recommended weight
+    current_weight: float  # current weight (0 if new entry)
+    signal_strength: float = 0.0
+    reason: str = ""
+
+
+@dataclass
 class ExecutionResult:
     """Output of a strategy execution for one agent."""
 
     agent_id: str
     strategy_output: StrategyOutput | None = None
     integrated_scores: dict[str, float] = field(default_factory=dict)
+    order_actions: list[OrderAction] = field(default_factory=list)
     regime: str = "neutral"
     error: str | None = None
     executed_at: datetime = field(default_factory=datetime.utcnow)
@@ -246,10 +259,16 @@ class StrategyEngine:
 
             regime = integrator._detect_regime(sentiment_data).label
 
+            # Step 7: Diff recommended positions against current holdings
+            # to produce concrete buy/sell/hold order actions.
+            order_actions = self._diff_positions(output, ctx.current_positions)
+
             logger.info(
-                "Agent %s: strategy produced %d positions | regime=%s",
+                "Agent %s: strategy produced %d positions, "
+                "%d order actions | regime=%s",
                 ctx.agent_id,
                 len(output.positions),
+                len(order_actions),
                 regime,
             )
 
@@ -257,6 +276,7 @@ class StrategyEngine:
                 agent_id=ctx.agent_id,
                 strategy_output=output,
                 integrated_scores=integrated_scores,
+                order_actions=order_actions,
                 regime=regime,
             )
 
@@ -267,6 +287,96 @@ class StrategyEngine:
                 str(e),
             )
             return ExecutionResult(agent_id=ctx.agent_id, error=str(e))
+
+    # ------------------------------------------------------------------
+    # Position diffing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _diff_positions(
+        output: StrategyOutput,
+        current_positions: list[dict[str, Any]],
+    ) -> list[OrderAction]:
+        """
+        Compare strategy-recommended positions against current holdings
+        and produce concrete order actions.
+
+        Returns a list of OrderAction objects covering:
+        - "buy"      — new position not currently held
+        - "sell"     — currently held but not in recommendations (exit)
+        - "increase" — held and recommended at a higher weight
+        - "decrease" — held and recommended at a lower weight
+        - "hold"     — held and recommended at similar weight (±1%)
+        """
+        # Build lookup of recommended positions by symbol
+        recommended: dict[str, Any] = {}
+        for pos in output.positions:
+            recommended[pos.symbol] = pos
+
+        # Build lookup of current positions by symbol
+        current: dict[str, dict[str, Any]] = {}
+        for p in current_positions:
+            sym = p.get("ticker", p.get("symbol", ""))
+            if sym:
+                current[sym] = p
+
+        actions: list[OrderAction] = []
+
+        # 1. Check all recommended positions
+        for sym, pos in recommended.items():
+            if sym in current:
+                # Already held — compare weights
+                cur_weight = float(current[sym].get("target_weight", 0) or 0)
+                diff = pos.target_weight - cur_weight
+
+                if abs(diff) < 0.01:
+                    action = "hold"
+                    reason = "Weight unchanged"
+                elif diff > 0:
+                    action = "increase"
+                    reason = f"Increase weight by {diff:.1%}"
+                else:
+                    action = "decrease"
+                    reason = f"Decrease weight by {abs(diff):.1%}"
+
+                actions.append(
+                    OrderAction(
+                        symbol=sym,
+                        action=action,
+                        target_weight=pos.target_weight,
+                        current_weight=cur_weight,
+                        signal_strength=pos.signal_strength,
+                        reason=reason,
+                    )
+                )
+            else:
+                # New entry
+                actions.append(
+                    OrderAction(
+                        symbol=sym,
+                        action="buy",
+                        target_weight=pos.target_weight,
+                        current_weight=0.0,
+                        signal_strength=pos.signal_strength,
+                        reason="New position recommended",
+                    )
+                )
+
+        # 2. Check for exits: currently held but not recommended
+        for sym, p in current.items():
+            if sym not in recommended:
+                cur_weight = float(p.get("target_weight", 0) or 0)
+                actions.append(
+                    OrderAction(
+                        symbol=sym,
+                        action="sell",
+                        target_weight=0.0,
+                        current_weight=cur_weight,
+                        reason="No longer recommended — exit",
+                    )
+                )
+
+        return actions
 
     # ------------------------------------------------------------------
     # Internal helpers
