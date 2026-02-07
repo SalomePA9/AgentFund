@@ -426,6 +426,29 @@ def place_bracket_orders(
 
 
 # ---------------------------------------------------------------------------
+# GTC order cleanup
+# ---------------------------------------------------------------------------
+
+
+def _cancel_gtc_orders(broker, pos_row: dict) -> None:
+    """
+    Cancel any outstanding broker-side GTC stop and take-profit orders
+    for a position that is being exited.  Prevents orphaned orders
+    from lingering at the broker after the position is closed.
+    """
+    if not broker:
+        return
+
+    stop_oid = pos_row.get("stop_order_id")
+    if stop_oid:
+        try:
+            broker.cancel_order(stop_oid)
+            logger.info("Cancelled GTC stop order %s", stop_oid)
+        except Exception:
+            logger.debug("Could not cancel stop order %s (may already be filled/cancelled)", stop_oid)
+
+
+# ---------------------------------------------------------------------------
 # Position lifecycle management
 # ---------------------------------------------------------------------------
 
@@ -523,7 +546,7 @@ async def sync_positions(
 
                 existing = (
                     supabase.table("positions")
-                    .select("id, entry_price, shares")
+                    .select("id, entry_price, shares, stop_order_id")
                     .eq("agent_id", agent_id)
                     .eq("ticker", sym)
                     .eq("status", "open")
@@ -531,6 +554,9 @@ async def sync_positions(
                 )
 
                 for pos_row in existing.data:
+                    # Cancel broker-side GTC stop/take-profit orders
+                    _cancel_gtc_orders(broker, pos_row)
+
                     update: dict[str, Any] = {
                         "status": "closed",
                         "exit_date": datetime.utcnow().date().isoformat(),
