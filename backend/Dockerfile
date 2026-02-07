@@ -23,8 +23,8 @@ COPY . .
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 8000
+# Expose port (Render sets PORT dynamically)
+EXPOSE ${PORT:-8000}
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application (use PORT env var for Render compatibility)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
