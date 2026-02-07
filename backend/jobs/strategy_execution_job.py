@@ -201,6 +201,22 @@ async def execute_orders(
     mode = BrokerMode.PAPER if paper else BrokerMode.LIVE
     broker = AlpacaBroker(api_key, api_secret, mode)
 
+    # Check if market is open before submitting orders
+    try:
+        clock = broker.is_market_open()
+        if not clock.get("is_open", False):
+            logger.info(
+                "Agent %s: market is closed — deferring orders (next open: %s)",
+                result.agent_id,
+                clock.get("next_open", "unknown"),
+            )
+            return [], broker
+    except Exception:
+        logger.warning(
+            "Agent %s: could not check market hours — proceeding cautiously",
+            result.agent_id,
+        )
+
     # Get account details — use buying_power for cash awareness
     try:
         account = broker.get_account()
