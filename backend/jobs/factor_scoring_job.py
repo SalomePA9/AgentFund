@@ -39,6 +39,38 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _fetch_price_history(symbols: list[str]) -> dict[str, list[float]]:
+    """Fetch price history from the price_history table for all symbols.
+
+    Returns:
+        Dict of symbol -> list of closing prices (oldest to newest).
+    """
+    history: dict[str, list[float]] = {s: [] for s in symbols}
+
+    try:
+        # Fetch the last 252 trading days (~1 year) for momentum calculations
+        result = (
+            supabase.table("price_history")
+            .select("symbol, date, price")
+            .in_("symbol", symbols)
+            .order("date", desc=False)
+            .execute()
+        )
+
+        for row in result.data:
+            sym = row.get("symbol")
+            price = row.get("price")
+            if sym and price is not None:
+                history[sym].append(float(price))
+
+    except Exception as e:
+        logger.error(f"Error fetching price history: {e}")
+
+    loaded = sum(1 for v in history.values() if v)
+    logger.info("Loaded price history for %d/%d symbols", loaded, len(symbols))
+    return history
+
+
 async def fetch_all_stock_data() -> tuple[dict[str, dict], dict[str, SentimentInput]]:
     """Fetch all stock data and sentiment from database for factor calculation.
 
@@ -51,6 +83,9 @@ async def fetch_all_stock_data() -> tuple[dict[str, dict], dict[str, SentimentIn
     try:
         result = supabase.table("stocks").select("*").execute()
 
+        symbols = [r.get("symbol") for r in result.data if r.get("symbol")]
+        price_history = _fetch_price_history(symbols)
+
         for row in result.data:
             symbol = row.get("symbol")
             if not symbol:
@@ -59,7 +94,7 @@ async def fetch_all_stock_data() -> tuple[dict[str, dict], dict[str, SentimentIn
             # Map database columns to factor calculator expected format
             stock_data[symbol] = {
                 "current_price": row.get("price"),
-                "price_history": [],  # Would need to fetch from price_history table
+                "price_history": price_history.get(symbol, []),
                 "pe_ratio": row.get("pe_ratio"),
                 "pb_ratio": row.get("pb_ratio"),
                 "roe": row.get("roe"),

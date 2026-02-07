@@ -69,6 +69,33 @@ async def fetch_agent_positions(supabase, agent_id: str) -> list[dict]:
         return []
 
 
+def _fetch_price_history(supabase, symbols: list[str]) -> dict[str, list[float]]:
+    """Fetch price history from the price_history table for all symbols."""
+    history: dict[str, list[float]] = {s: [] for s in symbols}
+
+    try:
+        result = (
+            supabase.table("price_history")
+            .select("symbol, date, price")
+            .in_("symbol", symbols)
+            .order("date", desc=False)
+            .execute()
+        )
+
+        for row in result.data:
+            sym = row.get("symbol")
+            price = row.get("price")
+            if sym and price is not None:
+                history[sym].append(float(price))
+
+    except Exception as e:
+        logger.error(f"Error fetching price history: {e}")
+
+    loaded = sum(1 for v in history.values() if v)
+    logger.info("Loaded price history for %d/%d symbols", loaded, len(symbols))
+    return history
+
+
 async def fetch_market_and_sentiment(
     supabase,
 ) -> tuple[dict[str, dict], dict[str, SentimentInput]]:
@@ -79,6 +106,9 @@ async def fetch_market_and_sentiment(
     try:
         result = supabase.table("stocks").select("*").execute()
 
+        symbols = [r.get("symbol") for r in result.data if r.get("symbol")]
+        price_history = _fetch_price_history(supabase, symbols)
+
         for row in result.data:
             symbol = row.get("symbol")
             if not symbol:
@@ -86,7 +116,7 @@ async def fetch_market_and_sentiment(
 
             market_data[symbol] = {
                 "current_price": row.get("price"),
-                "price_history": [],
+                "price_history": price_history.get(symbol, []),
                 "pe_ratio": row.get("pe_ratio"),
                 "pb_ratio": row.get("pb_ratio"),
                 "roe": row.get("roe"),

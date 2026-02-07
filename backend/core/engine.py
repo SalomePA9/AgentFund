@@ -301,6 +301,32 @@ class StrategyEngine:
 
         return config
 
+    def _fetch_price_history(self, symbols: list[str]) -> dict[str, list[float]]:
+        """Fetch price history from the price_history table for all symbols."""
+        history: dict[str, list[float]] = {s: [] for s in symbols}
+
+        try:
+            result = (
+                self._db.table("price_history")
+                .select("symbol, date, price")
+                .in_("symbol", symbols)
+                .order("date", desc=False)
+                .execute()
+            )
+
+            for row in result.data:
+                sym = row.get("symbol")
+                price = row.get("price")
+                if sym and price is not None:
+                    history[sym].append(float(price))
+
+        except Exception:
+            logger.warning("Failed to fetch price history", exc_info=True)
+
+        loaded = sum(1 for v in history.values() if v)
+        logger.info("Loaded price history for %d/%d symbols", loaded, len(symbols))
+        return history
+
     async def _fetch_data(
         self, ctx: AgentContext
     ) -> tuple[dict[str, dict[str, Any]], dict[str, SentimentInput]]:
@@ -313,6 +339,9 @@ class StrategyEngine:
 
         result = self._db.table("stocks").select("*").execute()
 
+        symbols = [r.get("symbol") for r in result.data if r.get("symbol")]
+        price_history = self._fetch_price_history(symbols)
+
         for row in result.data:
             symbol = row.get("symbol")
             if not symbol:
@@ -320,7 +349,7 @@ class StrategyEngine:
 
             market_data[symbol] = {
                 "current_price": row.get("price"),
-                "price_history": [],
+                "price_history": price_history.get(symbol, []),
                 "pe_ratio": row.get("pe_ratio"),
                 "pb_ratio": row.get("pb_ratio"),
                 "roe": row.get("roe"),
