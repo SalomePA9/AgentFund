@@ -311,6 +311,20 @@ class StrategyEngine:
                     a for a in order_actions if a.symbol not in tp_syms
                 ] + tp_exits
 
+            # Step 10: Position aging — exit positions that have exceeded
+            # their configured time horizon.
+            age_exits = self._check_position_aging(ctx)
+            if age_exits:
+                logger.info(
+                    "Agent %s: %d positions exceeded time horizon",
+                    ctx.agent_id,
+                    len(age_exits),
+                )
+                age_syms = {a.symbol for a in age_exits}
+                order_actions = [
+                    a for a in order_actions if a.symbol not in age_syms
+                ] + age_exits
+
             logger.info(
                 "Agent %s: strategy produced %d positions, "
                 "%d order actions | regime=%s",
@@ -449,6 +463,62 @@ class StrategyEngine:
                         reason=(
                             f"Take-profit reached: price {current_price:.2f} "
                             f"{'≥' if side == 'long' else '≤'} target {target:.2f}"
+                        ),
+                    )
+                )
+
+        return exits
+
+    # ------------------------------------------------------------------
+    # Position aging
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_position_aging(ctx: AgentContext) -> list[OrderAction]:
+        """
+        Check if any current positions have exceeded their time horizon.
+
+        Uses ``max_holding_days`` from strategy_params or risk_params.
+        Compares against the position's ``entry_date`` field.
+        """
+        max_days = ctx.strategy_params.get(
+            "max_holding_days"
+        ) or ctx.risk_params.get("max_holding_days")
+
+        if not max_days:
+            return []
+
+        from datetime import date as _date
+
+        exits: list[OrderAction] = []
+        today = _date.today()
+
+        for pos in ctx.current_positions:
+            sym = pos.get("ticker", pos.get("symbol", ""))
+            entry_date_str = pos.get("entry_date")
+            if not sym or not entry_date_str:
+                continue
+
+            try:
+                entry_date = (
+                    _date.fromisoformat(entry_date_str)
+                    if isinstance(entry_date_str, str)
+                    else entry_date_str
+                )
+                days_held = (today - entry_date).days
+            except (ValueError, TypeError):
+                continue
+
+            if days_held >= max_days:
+                exits.append(
+                    OrderAction(
+                        symbol=sym,
+                        action="sell",
+                        target_weight=0.0,
+                        current_weight=float(pos.get("target_weight", 0) or 0),
+                        reason=(
+                            f"Position aged out: held {days_held}d, "
+                            f"max horizon {max_days}d"
                         ),
                     )
                 )

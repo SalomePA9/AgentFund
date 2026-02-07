@@ -142,6 +142,7 @@ class TrendFollowingStrategy(BaseStrategy):
         params = self.config.custom_params
         min_signal = params.get("min_signal_strength", 20)
         allow_short = params.get("allow_short", False)
+        max_holding = params.get("max_holding_days", 90)  # ~1 quarter
 
         for symbol, mom_signal in momentum_signals.items():
             # Skip weak signals
@@ -175,6 +176,7 @@ class TrendFollowingStrategy(BaseStrategy):
                     side=side,
                     target_weight=weight,
                     signal_strength=abs(mom_signal.value),
+                    max_holding_days=max_holding,
                     metadata={
                         "strategy": "trend_following",
                         "momentum_signal": mom_signal.value,
@@ -672,6 +674,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
         min_zscore = params.get("min_zscore", 2.0)
         max_zscore = params.get("max_zscore", 4.0)  # Avoid extreme outliers
         pairs = params.get("pairs", [])  # List of (symbol1, symbol2) tuples
+        max_holding = params.get("max_holding_days", 30)  # ~1 month convergence
 
         zscore_signals: dict[str, Signal] = {}
         sentiment_signals: dict[str, Signal] = {}
@@ -760,6 +763,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
                             side=side,
                             target_weight=weight,
                             signal_strength=abs(z_signal.value),
+                            max_holding_days=max_holding,
                             metadata={
                                 "strategy": "statistical_arbitrage",
                                 "z_score": z,
@@ -858,6 +862,7 @@ class VolatilityPremiumStrategy(BaseStrategy):
         params = self.config.custom_params
         low_vol_only = params.get("low_vol_only", True)
         vol_threshold_pct = params.get("vol_threshold_percentile", 30)  # Bottom 30%
+        max_holding = params.get("max_holding_days", 120)  # ~1 quarter for vol prem
         sentiment_filter = params.get("sentiment_crisis_threshold", -50)
 
         vol_signals: dict[str, Signal] = {}
@@ -906,6 +911,7 @@ class VolatilityPremiumStrategy(BaseStrategy):
                     side=PositionSide.LONG,
                     target_weight=weight,
                     signal_strength=vol_signal.value,
+                    max_holding_days=max_holding,
                     metadata={
                         "strategy": "volatility_premium",
                         "annualized_volatility": vol,
