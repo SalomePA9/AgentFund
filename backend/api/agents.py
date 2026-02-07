@@ -577,7 +577,9 @@ async def get_agent_performance(
         "total_return_pct": agent.get("total_return_pct", 0.0),
         "daily_return_pct": agent.get("daily_return_pct", 0.0),
         "vs_benchmark_pct": agent.get("total_return_pct", 0.0)
-        - _get_spy_return_pct(db, agent["start_date"], agent.get("end_date", date.today().isoformat())),
+        - _get_spy_return_pct(
+            db, agent["start_date"], agent.get("end_date", date.today().isoformat())
+        ),
         "sharpe_ratio": agent.get("sharpe_ratio", 0.0),
         "max_drawdown_pct": agent.get("max_drawdown_pct", 0.0),
         "win_rate_pct": agent.get("win_rate_pct", 0.0),
