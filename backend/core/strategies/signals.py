@@ -693,7 +693,7 @@ class DividendYieldSignal(SignalGenerator):
 
     @property
     def signal_type(self) -> SignalType:
-        return SignalType.VALUE  # Use VALUE type for now, could add DIVIDEND
+        return SignalType.DIVIDEND_YIELD
 
     async def generate(
         self, symbols: list[str], market_data: dict[str, Any], **kwargs

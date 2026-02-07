@@ -55,6 +55,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+import numpy as np
+
 # =============================================================================
 # Enums and Constants
 # =============================================================================
@@ -92,6 +94,7 @@ class SignalType(str, Enum):
     STATISTICAL_ZSCORE = "statistical_zscore"
     COINTEGRATION = "cointegration"
     REVERSAL = "reversal"
+    DIVIDEND_YIELD = "dividend_yield"
 
 
 class PositionSide(str, Enum):
@@ -498,7 +501,69 @@ class BaseStrategy(ABC):
 
             adjusted_positions.append(pos)
 
+        # 5. Correlation guard — drop positions that are too correlated
+        # with higher-ranked ones already in the portfolio.
+        adjusted_positions = self._filter_correlated(
+            adjusted_positions, market_data, risk_cfg.correlation_limit
+        )
+
         return adjusted_positions
+
+    @staticmethod
+    def _filter_correlated(
+        positions: list["Position"],
+        market_data: dict[str, Any],
+        max_corr: float,
+    ) -> list["Position"]:
+        """
+        Remove positions whose price history is too correlated with a
+        higher-priority position already accepted.
+
+        Positions are processed in order (highest signal_strength first).
+        A candidate is dropped if its correlation with ANY already-accepted
+        position exceeds ``max_corr``.
+        """
+        if max_corr >= 1.0:
+            return positions  # guard disabled
+
+        # Sort by signal strength descending (strongest kept first)
+        ordered = sorted(positions, key=lambda p: p.signal_strength, reverse=True)
+        accepted: list["Position"] = []
+        accepted_histories: list[list[float]] = []
+
+        for pos in ordered:
+            prices = (market_data.get(pos.symbol) or {}).get("price_history", [])
+            if len(prices) < 20:
+                # Not enough data to compute correlation — keep position
+                accepted.append(pos)
+                accepted_histories.append(prices)
+                continue
+
+            too_correlated = False
+            for hist in accepted_histories:
+                if len(hist) < 20:
+                    continue
+                # Use the last 60 days or the shorter series
+                n = min(60, len(prices), len(hist))
+                a = np.array(prices[-n:])
+                b = np.array(hist[-n:])
+                # Compute return correlations
+                if n < 3:
+                    continue
+                ra = np.diff(a) / a[:-1]
+                rb = np.diff(b) / b[:-1]
+                if np.std(ra) == 0 or np.std(rb) == 0:
+                    continue
+                corr = float(np.corrcoef(ra, rb)[0, 1])
+                if abs(corr) > max_corr:
+                    too_correlated = True
+                    break
+
+            if not too_correlated:
+                accepted.append(pos)
+                accepted_histories.append(prices)
+
+        return accepted
 
     def _calculate_risk_metrics(
         self, positions: list[Position], market_data: dict[str, Any]
