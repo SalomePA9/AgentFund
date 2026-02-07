@@ -297,6 +297,20 @@ class StrategyEngine:
                     a for a in order_actions if a.symbol not in stop_syms
                 ] + stop_exits
 
+            # Step 9: Take-profit check — scan current positions for any
+            # that have reached their target price and inject sell actions.
+            tp_exits = self._check_take_profits(ctx, market_data)
+            if tp_exits:
+                logger.info(
+                    "Agent %s: %d positions hit take-profit target",
+                    ctx.agent_id,
+                    len(tp_exits),
+                )
+                tp_syms = {a.symbol for a in tp_exits}
+                order_actions = [
+                    a for a in order_actions if a.symbol not in tp_syms
+                ] + tp_exits
+
             logger.info(
                 "Agent %s: strategy produced %d positions, "
                 "%d order actions | regime=%s",
@@ -376,6 +390,65 @@ class StrategyEngine:
                         reason=(
                             f"Stop-loss breached: price {current_price:.2f} "
                             f"{'<=' if side == 'long' else '>='} stop {stop:.2f}"
+                        ),
+                    )
+                )
+
+        return exits
+
+    # ------------------------------------------------------------------
+    # Take-profit monitoring
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_take_profits(
+        ctx: AgentContext,
+        market_data: dict[str, dict[str, Any]],
+    ) -> list[OrderAction]:
+        """
+        Check current positions against their take-profit prices.
+
+        If a position's current market price has reached its target, produce
+        a sell action so the execution layer exits the position with profit.
+
+        Positions are expected to have ``target_price`` and ``side`` fields.
+        """
+        exits: list[OrderAction] = []
+
+        for pos in ctx.current_positions:
+            sym = pos.get("ticker", pos.get("symbol", ""))
+            target = pos.get("target_price")
+            side = pos.get("side", "long")
+
+            if not sym or target is None:
+                continue
+
+            current_price = (market_data.get(sym) or {}).get("current_price")
+            if current_price is None:
+                continue
+
+            try:
+                target = float(target)
+                current_price = float(current_price)
+            except (TypeError, ValueError):
+                continue
+
+            reached = False
+            if side == "long" and current_price >= target:
+                reached = True
+            elif side == "short" and current_price <= target:
+                reached = True
+
+            if reached:
+                exits.append(
+                    OrderAction(
+                        symbol=sym,
+                        action="sell",
+                        target_weight=0.0,
+                        current_weight=float(pos.get("target_weight", 0) or 0),
+                        reason=(
+                            f"Take-profit reached: price {current_price:.2f} "
+                            f"{'≥' if side == 'long' else '≤'} target {target:.2f}"
                         ),
                     )
                 )

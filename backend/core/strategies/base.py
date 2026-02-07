@@ -201,6 +201,7 @@ class RiskConfig:
     max_sector_exposure: float = 0.30  # Max 30% per sector
     max_portfolio_leverage: float = 1.0  # No leverage by default
     stop_loss_atr_multiple: float = 2.0  # Stop at 2x ATR
+    take_profit_atr_multiple: float = 3.0  # Take profit at 3x ATR
     target_volatility: float = 0.15  # 15% annual vol target
     max_drawdown_limit: float = 0.20  # 20% max drawdown
     correlation_limit: float = 0.7  # Avoid highly correlated positions
@@ -488,14 +489,30 @@ class BaseStrategy(ABC):
             atr = symbol_data.get("atr")
             price = symbol_data.get("current_price")
 
-            if atr and price and pos.stop_loss is None:
+            if atr and price:
                 try:
                     atr = float(atr)
                     price = float(price)
-                    if pos.side == PositionSide.LONG:
-                        pos.stop_loss = price - (atr * risk_cfg.stop_loss_atr_multiple)
-                    elif pos.side == PositionSide.SHORT:
-                        pos.stop_loss = price + (atr * risk_cfg.stop_loss_atr_multiple)
+                    # Set stop-loss if not already set
+                    if pos.stop_loss is None:
+                        if pos.side == PositionSide.LONG:
+                            pos.stop_loss = price - (
+                                atr * risk_cfg.stop_loss_atr_multiple
+                            )
+                        elif pos.side == PositionSide.SHORT:
+                            pos.stop_loss = price + (
+                                atr * risk_cfg.stop_loss_atr_multiple
+                            )
+                    # Set take-profit if not already set
+                    if pos.take_profit is None:
+                        if pos.side == PositionSide.LONG:
+                            pos.take_profit = price + (
+                                atr * risk_cfg.take_profit_atr_multiple
+                            )
+                        elif pos.side == PositionSide.SHORT:
+                            pos.take_profit = price - (
+                                atr * risk_cfg.take_profit_atr_multiple
+                            )
                 except (TypeError, ValueError):
                     pass
 
