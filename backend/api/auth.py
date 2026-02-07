@@ -14,6 +14,8 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from supabase import Client
 
+from postgrest.exceptions import APIError
+
 from config import get_settings
 from database import get_db
 
@@ -155,16 +157,25 @@ async def register(user: UserCreate, db: Annotated[Client, Depends(get_db)]):
 
     # Create user
     hashed_password = get_password_hash(user.password)
-    result = (
-        db.table("users")
-        .insert(
-            {
-                "email": user.email,
-                "password_hash": hashed_password,
-            }
+    try:
+        result = (
+            db.table("users")
+            .insert(
+                {
+                    "email": user.email,
+                    "password_hash": hashed_password,
+                }
+            )
+            .execute()
         )
-        .execute()
-    )
+    except APIError as e:
+        detail = "Failed to create user"
+        if "row-level security" in str(e):
+            detail = "Database permission error. Please check SUPABASE_SERVICE_KEY is configured."
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=detail,
+        )
 
     if not result.data:
         raise HTTPException(
