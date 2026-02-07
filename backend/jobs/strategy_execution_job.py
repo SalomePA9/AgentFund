@@ -23,11 +23,7 @@ _backend_dir = Path(__file__).resolve().parent.parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from core.engine import (  # noqa: E402
-    AgentContext,
-    ExecutionResult,
-    StrategyEngine,
-)
+from core.engine import AgentContext, ExecutionResult, StrategyEngine  # noqa: E402
 from core.sentiment_integration import SentimentInput  # noqa: E402
 from database import get_supabase_client  # noqa: E402
 
