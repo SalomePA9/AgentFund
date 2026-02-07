@@ -173,6 +173,12 @@ class StrategyEngine:
             ExecutionResult with position recommendations.
         """
         try:
+            # Step 0: Drawdown circuit breaker — halt trading if the
+            # agent's portfolio has lost more than the configured max.
+            breaker_result = self._check_drawdown_breaker(ctx)
+            if breaker_result is not None:
+                return breaker_result
+
             # Step 1: Resolve strategy config from agent settings
             config = self._resolve_strategy_config(ctx)
             logger.info(
@@ -293,6 +299,69 @@ class StrategyEngine:
                 str(e),
             )
             return ExecutionResult(agent_id=ctx.agent_id, error=str(e))
+
+    # ------------------------------------------------------------------
+    # Drawdown circuit breaker
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_drawdown_breaker(ctx: AgentContext) -> ExecutionResult | None:
+        """
+        Check if the agent's portfolio drawdown exceeds its configured limit.
+
+        Uses the agent's current positions to compute unrealised P&L vs
+        allocated capital.  If drawdown exceeds the max, returns an
+        ExecutionResult that signals a full liquidation (sell-all) and
+        halts normal strategy execution.
+
+        Returns None if the breaker is not triggered.
+        """
+        max_drawdown = ctx.risk_params.get("max_drawdown_limit", 0.20)
+        allocated = ctx.allocated_capital
+
+        if allocated <= 0:
+            return None
+
+        # Compute total P&L from open positions
+        total_pnl = 0.0
+        for pos in ctx.current_positions:
+            pnl = pos.get("unrealized_pl", 0) or 0
+            total_pnl += float(pnl)
+
+        drawdown = -total_pnl / allocated if total_pnl < 0 else 0.0
+
+        if drawdown < max_drawdown:
+            return None
+
+        logger.warning(
+            "CIRCUIT BREAKER: Agent %s drawdown %.1f%% exceeds limit %.1f%% "
+            "— halting trading and signalling liquidation",
+            ctx.agent_id,
+            drawdown * 100,
+            max_drawdown * 100,
+        )
+
+        # Build sell-all order actions for every open position
+        sell_actions: list[OrderAction] = []
+        for pos in ctx.current_positions:
+            sym = pos.get("ticker", pos.get("symbol", ""))
+            if sym:
+                sell_actions.append(
+                    OrderAction(
+                        symbol=sym,
+                        action="sell",
+                        target_weight=0.0,
+                        current_weight=float(pos.get("target_weight", 0) or 0),
+                        reason=f"Circuit breaker: drawdown {drawdown:.1%} exceeds {max_drawdown:.0%} limit",
+                    )
+                )
+
+        return ExecutionResult(
+            agent_id=ctx.agent_id,
+            order_actions=sell_actions,
+            regime="circuit_breaker",
+            error=None,
+        )
 
     # ------------------------------------------------------------------
     # Position diffing
