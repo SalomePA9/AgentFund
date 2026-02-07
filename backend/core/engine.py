@@ -325,6 +325,12 @@ class StrategyEngine:
                     a for a in order_actions if a.symbol not in age_syms
                 ] + age_exits
 
+            # Step 11: Enrich buy actions with a per-position investment
+            # thesis that explains why the agent is entering this trade.
+            self._enrich_trade_theses(
+                order_actions, output, integrated_scores, regime, market_data
+            )
+
             logger.info(
                 "Agent %s: strategy produced %d positions, "
                 "%d order actions | regime=%s",
@@ -524,6 +530,63 @@ class StrategyEngine:
                 )
 
         return exits
+
+    # ------------------------------------------------------------------
+    # Trade thesis generation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _enrich_trade_theses(
+        order_actions: list[OrderAction],
+        output: "StrategyOutput",
+        integrated_scores: dict[str, float],
+        regime: str,
+        market_data: dict[str, dict[str, Any]],
+    ) -> None:
+        """
+        Replace generic order reasons with a detailed investment thesis
+        for buy and increase actions.  Each thesis captures the signal
+        analysis, integrated score, price targets, stop level, time
+        horizon, and market regime — like a human trader's trade journal.
+
+        Modifies order_actions in place.
+        """
+        # Build lookup of strategy-recommended positions
+        pos_lookup: dict[str, Any] = {}
+        if output:
+            for pos in output.positions:
+                pos_lookup[pos.symbol] = pos
+
+        for action in order_actions:
+            if action.action not in ("buy", "increase"):
+                continue
+
+            pos = pos_lookup.get(action.symbol)
+            if not pos:
+                continue
+
+            md = market_data.get(action.symbol) or {}
+            score = integrated_scores.get(action.symbol)
+            strategy = pos.metadata.get("strategy", "unknown")
+            price = md.get("current_price")
+
+            parts = [f"Strategy: {strategy}"]
+            if score is not None:
+                parts.append(f"Integrated score: {score:.1f}/100")
+            parts.append(f"Signal strength: {pos.signal_strength:.1f}")
+            parts.append(f"Regime: {regime}")
+            parts.append(f"Weight: {action.target_weight:.1%}")
+
+            if price:
+                parts.append(f"Entry ~${float(price):.2f}")
+            if pos.stop_loss is not None:
+                parts.append(f"Stop: ${pos.stop_loss:.2f}")
+            if pos.take_profit is not None:
+                parts.append(f"Target: ${pos.take_profit:.2f}")
+            if pos.max_holding_days:
+                parts.append(f"Horizon: {pos.max_holding_days}d")
+
+            action.reason = " | ".join(parts)
 
     # ------------------------------------------------------------------
     # Rebalance frequency gate
