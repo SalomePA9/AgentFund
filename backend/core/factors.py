@@ -67,6 +67,7 @@ class FactorCalculator:
         self,
         market_data: dict[str, dict[str, Any]],
         sectors: dict[str, str] | None = None,
+        factor_weights: dict[str, float] | None = None,
     ) -> dict[str, FactorScores]:
         """
         Calculate all factor scores for a universe of stocks.
@@ -85,6 +86,9 @@ class FactorCalculator:
                 - atr: Average True Range
                 - current_price: Current price
             sectors: Optional dict of symbol -> sector for sector-aware calculations
+            factor_weights: Optional dict with keys "momentum", "value",
+                "quality", "dividend", "volatility" mapping to float weights.
+                If None, equal weights (0.2 each) are used.
 
         Returns:
             Dict of symbol -> FactorScores
@@ -111,6 +115,20 @@ class FactorCalculator:
             volatility_raw, invert=True
         )  # Lower vol = higher score
 
+        # Resolve factor weights for composite calculation
+        w_m = 0.2
+        w_v = 0.2
+        w_q = 0.2
+        w_d = 0.2
+        w_vol = 0.2
+        if factor_weights:
+            total = sum(factor_weights.values()) or 1.0
+            w_m = factor_weights.get("momentum", 0.0) / total
+            w_v = factor_weights.get("value", 0.0) / total
+            w_q = factor_weights.get("quality", 0.0) / total
+            w_d = factor_weights.get("dividend", 0.0) / total
+            w_vol = factor_weights.get("volatility", 0.0) / total
+
         # Build results
         for symbol in symbols:
             data = market_data[symbol]
@@ -121,8 +139,14 @@ class FactorCalculator:
             d_score = dividend_scores.get(symbol, 50.0)
             vol_score = volatility_scores.get(symbol, 50.0)
 
-            # Composite: equal weight of all factors
-            composite = (m_score + v_score + q_score + d_score + vol_score) / 5
+            # Composite: weighted by strategy-specific factor weights
+            composite = (
+                m_score * w_m
+                + v_score * w_v
+                + q_score * w_q
+                + d_score * w_d
+                + vol_score * w_vol
+            )
 
             # Extract component details
             prices = data.get("price_history", [])

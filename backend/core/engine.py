@@ -21,6 +21,7 @@ from typing import Any
 
 from core.factors import FactorCalculator
 from core.sentiment_integration import (
+    DEFAULT_FACTOR_WEIGHTS,
     SentimentFactorIntegrator,
     SentimentInput,
     TemporalSentimentAnalyzer,
@@ -195,12 +196,17 @@ class StrategyEngine:
                 sentiment_weight=ctx.strategy_params.get("sentiment_weight", 0.25),
             )
 
-            # Build factor scores from market data
+            # Build factor scores from market data using strategy-specific
+            # factor weights so the composite score reflects this strategy's
+            # priorities (e.g. momentum-heavy for momentum strategies).
             calculator = FactorCalculator(sector_aware=True)
             sectors = {
                 sym: d.get("sector", "Unknown") for sym, d in market_data.items()
             }
-            factor_scores = calculator.calculate_all(market_data, sectors)
+            strategy_weights = DEFAULT_FACTOR_WEIGHTS.get(ctx.strategy_type)
+            factor_scores = calculator.calculate_all(
+                market_data, sectors, factor_weights=strategy_weights
+            )
 
             factor_data = {
                 sym: {
