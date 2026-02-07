@@ -724,26 +724,45 @@ async def save_execution_result(
     result: ExecutionResult,
 ) -> bool:
     """Save strategy execution result as agent activity records."""
-    if result.error or not result.strategy_output:
+    if result.error:
+        return False
+
+    # Allow circuit breaker results (strategy_output=None but order_actions present)
+    has_actions = bool(result.order_actions)
+    if not result.strategy_output and not has_actions:
         return False
 
     try:
         output = result.strategy_output
 
         # Log the execution as an activity event
-        supabase.table("agent_activity").insert(
-            {
-                "agent_id": result.agent_id,
-                "activity_type": "rebalance",
-                "details": {
-                    "strategy": output.strategy_name,
-                    "regime": result.regime,
-                    "positions_recommended": len(output.positions),
-                    "risk_metrics": output.risk_metrics,
-                    "executed_at": result.executed_at.isoformat(),
-                },
-            }
-        ).execute()
+        if output:
+            supabase.table("agent_activity").insert(
+                {
+                    "agent_id": result.agent_id,
+                    "activity_type": "rebalance",
+                    "details": {
+                        "strategy": output.strategy_name,
+                        "regime": result.regime,
+                        "positions_recommended": len(output.positions),
+                        "risk_metrics": output.risk_metrics,
+                        "executed_at": result.executed_at.isoformat(),
+                    },
+                }
+            ).execute()
+        elif result.regime == "circuit_breaker":
+            supabase.table("agent_activity").insert(
+                {
+                    "agent_id": result.agent_id,
+                    "activity_type": "rebalance",
+                    "details": {
+                        "regime": "circuit_breaker",
+                        "liquidation": True,
+                        "positions_liquidated": len(result.order_actions),
+                        "executed_at": result.executed_at.isoformat(),
+                    },
+                }
+            ).execute()
 
         # Log each order action (buy/sell/hold/increase/decrease)
         for action in result.order_actions:
