@@ -115,19 +115,23 @@ class FactorCalculator:
             volatility_raw, invert=True
         )  # Lower vol = higher score
 
-        # Resolve factor weights for composite calculation
+        # Resolve factor weights for composite calculation.
+        # Only use the 5 quant factor keys — ignore any extra keys
+        # (e.g. "sentiment") so that the 5 factors properly sum to 1.0.
+        _FACTOR_KEYS = ("momentum", "value", "quality", "dividend", "volatility")
         w_m = 0.2
         w_v = 0.2
         w_q = 0.2
         w_d = 0.2
         w_vol = 0.2
         if factor_weights:
-            total = sum(factor_weights.values()) or 1.0
-            w_m = factor_weights.get("momentum", 0.0) / total
-            w_v = factor_weights.get("value", 0.0) / total
-            w_q = factor_weights.get("quality", 0.0) / total
-            w_d = factor_weights.get("dividend", 0.0) / total
-            w_vol = factor_weights.get("volatility", 0.0) / total
+            raw = {k: factor_weights.get(k, 0.0) for k in _FACTOR_KEYS}
+            total = sum(raw.values()) or 1.0
+            w_m = raw["momentum"] / total
+            w_v = raw["value"] / total
+            w_q = raw["quality"] / total
+            w_d = raw["dividend"] / total
+            w_vol = raw["volatility"] / total
 
         # Build results
         for symbol in symbols:
