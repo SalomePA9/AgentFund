@@ -151,6 +151,132 @@ async def fetch_market_and_sentiment(
 
 
 # ---------------------------------------------------------------------------
+# Order execution
+# ---------------------------------------------------------------------------
+
+
+async def execute_orders(
+    supabase,
+    result: ExecutionResult,
+    agent: dict,
+    market_data: dict[str, dict],
+) -> list[dict]:
+    """
+    Forward actionable OrderActions to the Alpaca broker for execution.
+
+    Only processes "buy" and "sell" actions (new entries and full exits).
+    "increase" / "decrease" are converted to the appropriate buy/sell
+    quantity delta.  "hold" actions are skipped.
+
+    Returns a list of order result dicts (or errors).
+    """
+    from core.broker.alpaca_broker import AlpacaBroker, BrokerMode
+
+    # Resolve broker credentials from the agent's owner
+    user_id = agent.get("user_id")
+    if not user_id:
+        logger.warning("Agent %s has no user_id — skipping execution", result.agent_id)
+        return []
+
+    user_result = (
+        supabase.table("users")
+        .select("alpaca_api_key, alpaca_api_secret, alpaca_paper_mode")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    user = user_result.data
+    api_key = user.get("alpaca_api_key")
+    api_secret = user.get("alpaca_api_secret")
+
+    if not api_key or not api_secret:
+        logger.info(
+            "Agent %s: user has no Alpaca credentials — logging only",
+            result.agent_id,
+        )
+        return []
+
+    paper = user.get("alpaca_paper_mode", True)
+    mode = BrokerMode.PAPER if paper else BrokerMode.LIVE
+    broker = AlpacaBroker(api_key, api_secret, mode)
+
+    # Get account equity to convert weights → share counts
+    try:
+        account = broker.get_account()
+        equity = account.get("equity", 0.0)
+    except Exception as e:
+        logger.error("Agent %s: failed to get account — %s", result.agent_id, e)
+        return []
+
+    if equity <= 0:
+        logger.warning("Agent %s: account equity is zero", result.agent_id)
+        return []
+
+    order_results: list[dict] = []
+
+    for action in result.order_actions:
+        if action.action == "hold":
+            continue
+
+        price = (market_data.get(action.symbol) or {}).get("current_price")
+        if not price or price <= 0:
+            logger.warning("No price for %s — skipping order", action.symbol)
+            continue
+
+        try:
+            if action.action == "buy":
+                # New position: target_weight * equity / price = shares
+                notional = action.target_weight * equity
+                qty = int(notional / price)
+                if qty <= 0:
+                    continue
+                order = broker.place_market_order(action.symbol, qty, "buy")
+                order_results.append(order)
+
+            elif action.action == "sell":
+                # Full exit
+                order = broker.close_position(action.symbol)
+                order_results.append(order)
+
+            elif action.action == "increase":
+                delta_weight = action.target_weight - action.current_weight
+                if delta_weight <= 0:
+                    continue
+                notional = delta_weight * equity
+                qty = int(notional / price)
+                if qty <= 0:
+                    continue
+                order = broker.place_market_order(action.symbol, qty, "buy")
+                order_results.append(order)
+
+            elif action.action == "decrease":
+                delta_weight = action.current_weight - action.target_weight
+                if delta_weight <= 0:
+                    continue
+                notional = delta_weight * equity
+                qty = int(notional / price)
+                if qty <= 0:
+                    continue
+                order = broker.place_market_order(action.symbol, qty, "sell")
+                order_results.append(order)
+
+        except Exception as e:
+            logger.error(
+                "Agent %s: order for %s (%s) failed — %s",
+                result.agent_id,
+                action.symbol,
+                action.action,
+                e,
+            )
+            order_results.append(
+                {"symbol": action.symbol, "action": action.action, "error": str(e)}
+            )
+
+    logger.info("Agent %s: submitted %d orders", result.agent_id, len(order_results))
+    return order_results
+
+
+# ---------------------------------------------------------------------------
 # Result persistence
 # ---------------------------------------------------------------------------
 
@@ -278,7 +404,7 @@ async def run_strategy_execution_job() -> dict:
             )
             results.append(result)
 
-            # Persist results
+            # Persist results and execute orders
             if result.error:
                 failures += 1
                 logger.warning(
@@ -286,6 +412,10 @@ async def run_strategy_execution_job() -> dict:
                 )
             else:
                 saved = await save_execution_result(supabase, result)
+
+                # Forward actionable orders to broker
+                orders = await execute_orders(supabase, result, agent, market_data)
+
                 if saved:
                     successes += 1
                 else:
@@ -298,7 +428,7 @@ async def run_strategy_execution_job() -> dict:
                 )
                 logger.info(
                     f"Agent {agent_id} ({agent.get('name', '?')}): "
-                    f"{pos_count} positions | regime={result.regime}"
+                    f"{pos_count} positions, {len(orders)} orders | regime={result.regime}"
                 )
 
         end_time = datetime.utcnow()
