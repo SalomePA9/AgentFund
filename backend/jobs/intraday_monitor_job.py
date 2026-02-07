@@ -177,6 +177,15 @@ async def execute_exit(
     agent_id = pos.get("agent_id")
 
     try:
+        # Cancel outstanding GTC stop/take-profit orders before closing
+        stop_oid = pos.get("stop_order_id")
+        if stop_oid:
+            try:
+                broker.cancel_order(stop_oid)
+                logger.info("Cancelled GTC stop order %s for %s", stop_oid, sym)
+            except Exception:
+                logger.debug("Could not cancel stop order %s (may already be filled/cancelled)", stop_oid)
+
         # Close at broker
         order = broker.close_position(sym)
         exit_price = live_price or float(order.get("filled_avg_price") or 0)
