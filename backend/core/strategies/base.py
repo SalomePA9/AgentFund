@@ -467,7 +467,7 @@ class BaseStrategy(ABC):
             # Set stop loss based on ATR if available
             symbol_data = market_data.get(pos.symbol, {})
             atr = symbol_data.get("atr")
-            price = symbol_data.get("price")
+            price = symbol_data.get("current_price")
 
             if atr and price and pos.stop_loss is None:
                 if pos.side == PositionSide.LONG:
