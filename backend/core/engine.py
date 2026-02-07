@@ -385,7 +385,7 @@ class StrategyEngine:
 
         for pos in ctx.current_positions:
             sym = pos.get("ticker", pos.get("symbol", ""))
-            stop = pos.get("stop_loss")
+            stop = pos.get("stop_loss_price") or pos.get("stop_loss")
             side = pos.get("side", "long")
 
             if not sym or stop is None:
