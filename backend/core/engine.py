@@ -221,7 +221,14 @@ class StrategyEngine:
                 if sym in market_data:
                     market_data[sym]["integrated_composite"] = iscore.composite_score
 
-            # Step 6: Instantiate and execute strategy
+            # Step 6: Instantiate and execute strategy.
+            # Disable the strategy-level sentiment overlay because the
+            # 7-layer SentimentFactorIntegrator has already processed
+            # sentiment into integrated_composite scores injected above.
+            # Running both would double-count sentiment and potentially
+            # contradict the integrator's more sophisticated analysis.
+            config.sentiment.mode = SentimentMode.DISABLED
+
             strategy = StrategyRegistry.create(config)
             output = await strategy.execute(
                 market_data=market_data,
