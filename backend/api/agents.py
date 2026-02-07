@@ -4,6 +4,7 @@ Agents API endpoints.
 Handles agent CRUD operations, status management, and position tracking.
 """
 
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated
@@ -15,6 +16,8 @@ from supabase import Client
 
 from api.auth import get_current_user
 from database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -494,6 +497,49 @@ async def get_agent_activity(
     return result.data
 
 
+def _get_spy_return_pct(db: Client, start_date: str, end_date: str) -> float:
+    """Calculate SPY return percentage between two dates.
+
+    Queries the price_history table for the closest available SPY prices
+    on or before the given dates and computes the percentage return.
+    Returns 0.0 if price data is unavailable.
+    """
+    try:
+        start_result = (
+            db.table("price_history")
+            .select("price")
+            .eq("symbol", "SPY")
+            .lte("date", start_date)
+            .order("date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        end_result = (
+            db.table("price_history")
+            .select("price")
+            .eq("symbol", "SPY")
+            .lte("date", end_date)
+            .order("date", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not start_result.data or not end_result.data:
+            return 0.0
+
+        start_price = float(start_result.data[0]["price"])
+        end_price = float(end_result.data[0]["price"])
+
+        if start_price <= 0:
+            return 0.0
+
+        return ((end_price - start_price) / start_price) * 100
+
+    except Exception:
+        logger.warning("Failed to calculate SPY benchmark return", exc_info=True)
+        return 0.0
+
+
 @router.get("/{agent_id}/performance", response_model=PerformanceResponse)
 async def get_agent_performance(
     agent_id: UUID,
@@ -530,7 +576,8 @@ async def get_agent_performance(
         "total_value": agent.get("total_value", agent["allocated_capital"]),
         "total_return_pct": agent.get("total_return_pct", 0.0),
         "daily_return_pct": agent.get("daily_return_pct", 0.0),
-        "vs_benchmark_pct": 0.0,  # TODO: Calculate vs SPY
+        "vs_benchmark_pct": agent.get("total_return_pct", 0.0)
+        - _get_spy_return_pct(db, agent["start_date"], agent.get("end_date", date.today().isoformat())),
         "sharpe_ratio": agent.get("sharpe_ratio", 0.0),
         "max_drawdown_pct": agent.get("max_drawdown_pct", 0.0),
         "win_rate_pct": agent.get("win_rate_pct", 0.0),
