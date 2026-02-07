@@ -65,7 +65,7 @@ Establish the core infrastructure: database, API, market data pipeline, broker i
 [ ] Configure environment variables template
 [ ] Set up Docker Compose for local development
 [ ] Create GitHub Actions workflow for CI/CD
-[ ] Deploy initial backend to Railway (empty endpoints)
+[ ] Deploy initial backend to Render (empty endpoints)
 [ ] Deploy initial frontend to Vercel (placeholder page)
 ```
 
@@ -915,7 +915,7 @@ Phase 7 (Scale)
 |---------|-----------|-----------|
 | Supabase | $0 | $25 |
 | Vercel | $0 | $20 |
-| Railway | $0 | $20 |
+| Render | $0 | $19 |
 | Claude API | - | $50-100 |
 | Resend | $0 | $0 |
 | **Total** | **$50-100** | **$115-165** |
