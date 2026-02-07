@@ -1,11 +1,11 @@
 # FastAPI and server
-fastapi==0.109.2
+fastapi==0.111.0
 uvicorn[standard]==0.27.1
 python-multipart==0.0.9
 websockets==12.0
 
 # Database
-supabase==2.3.4
+supabase==2.11.0
 asyncpg==0.29.0
 
 # Authentication
@@ -35,7 +35,7 @@ resend==0.8.0
 
 # Utilities
 python-dotenv==1.0.1
-httpx==0.25.2
+httpx==0.28.1
 pydantic==2.6.1
 pydantic-settings==2.1.0
 tenacity==8.2.3
