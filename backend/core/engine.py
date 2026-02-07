@@ -102,6 +102,7 @@ class AgentContext:
     strategy_params: dict[str, Any]
     risk_params: dict[str, Any]
     allocated_capital: float
+    cash_balance: float = 0.0
     current_positions: list[dict[str, Any]] = field(default_factory=list)
 
 

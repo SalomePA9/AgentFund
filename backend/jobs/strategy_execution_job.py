@@ -599,6 +599,77 @@ async def sync_positions(
 
 
 # ---------------------------------------------------------------------------
+# Cash balance sync
+# ---------------------------------------------------------------------------
+
+
+async def sync_agent_cash_balance(
+    supabase,
+    agent: dict,
+    order_results: list[dict],
+    market_data: dict[str, dict],
+    result: ExecutionResult,
+) -> None:
+    """
+    Update the agent's ``cash_balance`` in the database based on
+    executed buy/sell orders.
+
+    Buys reduce cash, sells increase it.  This keeps the agent
+    aware of its available cash for future trades.
+    """
+    agent_id = agent["id"]
+    cash = float(agent.get("cash_balance", 0))
+
+    for action in result.order_actions:
+        if action.action == "hold":
+            continue
+
+        # Find the matching order result
+        order_info = None
+        for o in order_results:
+            if o.get("symbol") == action.symbol and not o.get("error"):
+                order_info = o
+                break
+
+        if not order_info:
+            continue
+
+        filled_price = float(order_info.get("filled_avg_price") or 0)
+        filled_qty = float(order_info.get("filled_qty") or order_info.get("qty") or 0)
+
+        if filled_price <= 0 or filled_qty <= 0:
+            # Use market data price estimate if fill info unavailable
+            price = (market_data.get(action.symbol) or {}).get("current_price")
+            if not price:
+                continue
+            filled_price = float(price)
+            filled_qty = float(order_info.get("qty") or 0)
+
+        trade_value = filled_price * filled_qty
+
+        if action.action in ("buy", "increase"):
+            cash -= trade_value
+        elif action.action in ("sell", "decrease"):
+            cash += trade_value
+
+    # Clamp to zero (shouldn't go negative but guard against it)
+    cash = max(0.0, cash)
+
+    try:
+        supabase.table("agents").update(
+            {"cash_balance": round(cash, 2)}
+        ).eq("id", agent_id).execute()
+
+        logger.info(
+            "Agent %s: cash_balance updated to %.2f",
+            agent_id,
+            cash,
+        )
+    except Exception as e:
+        logger.error("Agent %s: failed to sync cash_balance — %s", agent_id, e)
+
+
+# ---------------------------------------------------------------------------
 # Result persistence
 # ---------------------------------------------------------------------------
 
@@ -717,6 +788,7 @@ async def run_strategy_execution_job() -> dict:
                 strategy_params=agent.get("strategy_params", {}),
                 risk_params=agent.get("risk_params", {}),
                 allocated_capital=float(agent.get("allocated_capital", 0)),
+                cash_balance=float(agent.get("cash_balance", 0)),
                 current_positions=positions,
             )
 
@@ -745,6 +817,11 @@ async def run_strategy_execution_job() -> dict:
                 await sync_positions(
                     supabase, result, agent, orders, market_data,
                     broker=broker,
+                )
+
+                # Update agent's cash_balance based on executed trades
+                await sync_agent_cash_balance(
+                    supabase, agent, orders, market_data, result
                 )
 
                 if saved:
