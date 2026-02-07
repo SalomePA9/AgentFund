@@ -82,8 +82,9 @@ async function fetchApi<T>(
         'Request timed out. The server may be starting up — please try again in a moment.'
       );
     }
+    const detail = err instanceof Error ? err.message : String(err);
     throw new Error(
-      'Unable to connect to the server. Please try again in a moment.'
+      `Unable to connect to the server (${detail}). Please try again in a moment.`
     );
   }
 
