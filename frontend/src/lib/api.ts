@@ -16,7 +16,7 @@ import type {
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const REQUEST_TIMEOUT_MS = 15_000; // 15 seconds
+const REQUEST_TIMEOUT_MS = 60_000; // 60 seconds (Render free tier cold-starts can take 50s+)
 
 // ============================================
 // Base Fetch Utility
@@ -79,11 +79,11 @@ async function fetchApi<T>(
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error(
-        'Request timed out. The backend server may be unreachable.'
+        'Request timed out. The server may be starting up — please try again in a moment.'
       );
     }
     throw new Error(
-      'Unable to connect to the server. Please check your network connection.'
+      'Unable to connect to the server. Please try again in a moment.'
     );
   }
 
@@ -130,11 +130,11 @@ export const auth = {
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         throw new Error(
-          'Request timed out. The backend server may be unreachable.'
+          'Request timed out. The server may be starting up — please try again in a moment.'
         );
       }
       throw new Error(
-        'Unable to connect to the server. Please check your network connection.'
+        'Unable to connect to the server. Please try again in a moment.'
       );
     }
 
