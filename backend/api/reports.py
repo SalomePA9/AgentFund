@@ -258,11 +258,11 @@ def _build_agent_context(
         insider_breadth_signal = contributions.get("insider_breadth")
 
     # Get VIX details from indicators
-    vix_indicator = macro.get("indicator_vix_spot")
+    vix_indicator = macro.get("indicator_vix")
     if vix_indicator:
         vix_level = vix_indicator.get("value")
         meta = vix_indicator.get("metadata", {})
-        vix_regime = meta.get("regime")
+        vix_regime = meta.get("regime_label")
 
     # Fetch per-position uncorrelated signals
     held_tickers = [
