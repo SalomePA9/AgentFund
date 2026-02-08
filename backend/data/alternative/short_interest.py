@@ -101,10 +101,23 @@ class ShortInterestClient:
             if short_pct is None and shares_short is None:
                 return None
 
-            # Convert short_pct from decimal to percentage if needed
-            if short_pct is not None:
-                if short_pct < 1.0:
-                    short_pct *= 100  # Convert 0.03 → 3.0%
+            # yfinance returns shortPercentOfFloat as a decimal fraction
+            # (e.g. 0.03 = 3%). Always convert to percentage.
+            if short_pct is not None and float_shares:
+                # Validate against shares_short / float_shares if available
+                if shares_short and float_shares > 0:
+                    computed_pct = (shares_short / float_shares) * 100
+                    # If short_pct looks like a decimal fraction (typical yfinance)
+                    # and computed_pct is in a similar range, trust computed
+                    if abs(computed_pct - short_pct * 100) < abs(
+                        computed_pct - short_pct
+                    ):
+                        short_pct = short_pct * 100
+                    # else: short_pct already in percentage form
+                else:
+                    # No float_shares to validate — yfinance consistently
+                    # returns decimal fractions, so multiply
+                    short_pct = short_pct * 100
 
             # Compute short interest score (-100 to +100)
             # High short interest = bearish signal (negative score)
