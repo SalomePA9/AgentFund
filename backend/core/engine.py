@@ -264,6 +264,10 @@ class StrategyEngine:
 
             # Step 5: Inject integrated composite scores into market_data so
             # strategy.construct_portfolio() can use them for final ranking.
+            # Shallow-copy each stock's dict to avoid mutating the shared
+            # market_data across agents (composite scores are agent-specific
+            # due to different factor weights).
+            market_data = {sym: {**data} for sym, data in market_data.items()}
             for sym, iscore in integrated.items():
                 if sym in market_data:
                     market_data[sym]["integrated_composite"] = iscore.composite_score
