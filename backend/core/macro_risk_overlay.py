@@ -345,11 +345,16 @@ class MacroRiskOverlay:
         if total_weight <= 0:
             return 0.0, {}
 
+        # Cap each renormalized weight at 0.50 to prevent a single
+        # weak signal (e.g. seasonality at original weight 0.10) from
+        # dominating the composite when stronger signals are unavailable.
+        MAX_NORM_WEIGHT = 0.50
+
         contributions: dict[str, float] = {}
         composite = 0.0
 
         for name in active_signals:
-            norm_weight = active_weights[name] / total_weight
+            norm_weight = min(MAX_NORM_WEIGHT, active_weights[name] / total_weight)
             contribution = active_signals[name] * norm_weight
             contributions[name] = round(contribution, 4)
             composite += contribution
