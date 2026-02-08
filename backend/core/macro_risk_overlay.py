@@ -335,9 +335,9 @@ class MacroRiskOverlay:
         active_signals: dict[str, float] = {}
 
         for name, (value, available) in signal_map.items():
-            if available:
+            if available and value is not None and not np.isnan(value):
                 active_weights[name] = self.SIGNAL_WEIGHTS[name]
-                active_signals[name] = value
+                active_signals[name] = float(value)
 
         # Re-normalise weights
         total_weight = sum(active_weights.values())
@@ -370,6 +370,11 @@ class MacroRiskOverlay:
         This reflects the asymmetry of losses (a 50% loss requires
         a 100% gain to recover).
         """
+        # Guard against NaN propagation from corrupted upstream data
+        if np.isnan(composite):
+            logger.warning("MacroRiskOverlay: composite is NaN — returning neutral")
+            return 1.0
+
         if composite <= 0:
             # Bearish regime: scale from 1.0 down to MIN_SCALE
             # Linear mapping: -100 → MIN_SCALE, 0 → 1.0
