@@ -978,3 +978,208 @@ Every data source can fail — the FRED API can go down, Yahoo Finance can throt
 This means the system never goes blind — even if all external APIs fail, it has at least one signal (seasonality) and returns a mild directional tilt based on the current month.
 
 ---
+
+## 8. Risk Management
+
+Every strategy passes through multiple layers of risk management before any trades are placed. These are applied automatically, regardless of what the strategy's signals suggest.
+
+### 8.1 Position-Level Risk Controls
+
+**Maximum position size:** Each position is capped at a strategy-specific maximum (typically 5-10% of portfolio). Even if a signal is extremely strong (+100), the position won't exceed this cap.
+
+| Strategy | Max Position | Rationale |
+|----------|-------------|-----------|
+| Momentum | 5% | Diversified, many positions |
+| Quality Value | 5% | Concentrated but conservative |
+| Quality Momentum | 5% | Balanced approach |
+| Dividend Growth | 5% | Income diversification |
+| Trend Following | 10% | Fewer positions, higher conviction |
+| Short-Term Reversal | 3% | Many small positions |
+| Statistical Arbitrage | 5% | Pairs require balance |
+| Volatility Premium | 5% | Low-vol stocks, moderate sizing |
+
+**Stop-losses:** Set automatically using ATR (Average True Range) multiples:
+- Long positions: `stop = entry_price - ATR * multiplier`
+- Short positions: `stop = entry_price + ATR * multiplier`
+- Multiplier ranges from 1.5x (tight, for reversal) to 3.0x (wide, for dividends)
+
+**Take-profit targets:** Set using ATR multiples (typically 3x ATR for longs, creating a 1.5:1 reward-to-risk ratio with 2x ATR stops).
+
+**Position aging:** Each position has a maximum holding period. When a position exceeds this horizon, it's automatically exited. This prevents "zombie positions" that are neither stopped out nor profitable enough to exit.
+
+### 8.2 Portfolio-Level Risk Controls
+
+**Sector concentration:** No more than 30% of the portfolio can be in any single sector. If a strategy wants to buy 8 tech stocks at 5% each (40% tech), all tech positions are proportionally scaled down to fit within the 30% cap.
+
+**Gross exposure:** Total long weight + total short weight cannot exceed the strategy's leverage limit (1.0x for most strategies, 1.5x for trend following). If exceeded, all positions are scaled down proportionally.
+
+**Correlation guard:** Before finalising positions, the system checks pairwise return correlations using the last 60 days of price history. If a new position's correlation with any existing position exceeds 0.7, it's dropped. Positions are processed in signal-strength order, so the strongest signals are kept and weaker but correlated candidates are filtered out.
+
+### 8.3 Volatility-Based Sizing
+
+Most strategies use **volatility-scaled position sizing**. The idea is simple: give each position an equal chance to contribute to portfolio risk, regardless of how volatile the underlying stock is.
+
+```
+weight = (target_portfolio_volatility / stock_annualised_volatility) * base_weight
+```
+
+A stock with 40% annualised volatility in a portfolio targeting 15% gets its weight reduced to `15/40 = 0.375x` the base weight. A stock with 10% volatility gets `15/10 = 1.5x` the base weight (still capped at max position size).
+
+This creates a natural **risk parity** effect — every position contributes roughly the same amount of risk to the portfolio, preventing one volatile stock from dominating.
+
+### 8.4 Hysteresis (Anti-Churn)
+
+Strategies apply **hysteresis bands** to prevent unnecessary trading. Currently-held positions get a "stickiness bonus" to their signal strength:
+
+- The bonus is added to the signal when comparing held positions against new candidates
+- A new candidate must outperform the incumbent by more than the hysteresis band to replace it
+- Direction flips (long to short) require extra conviction: the new signal must exceed 2x the band
+
+Band widths vary by strategy:
+- Short-Term Reversal: 3.0 (low, because turnover is expected)
+- Trend Following: 5.0 (moderate)
+- Statistical Arbitrage: 4.0 (moderate)
+- Volatility Premium: 6.0 (high, because it's a slow strategy)
+- Cross-Sectional Factor: 5.0 (moderate)
+
+### 8.5 Drawdown Circuit Breaker
+
+Before any strategy runs, the engine checks if the agent's portfolio has hit its maximum drawdown limit (default: 20%). If unrealised losses as a percentage of allocated capital exceed this threshold:
+
+1. Normal strategy execution is **halted entirely**
+2. **Sell orders are generated for all open positions** (full liquidation)
+3. The regime is set to `circuit_breaker`
+4. The agent won't trade again until manually re-enabled
+
+This is the nuclear option — it protects against catastrophic losses when everything else has failed.
+
+### 8.6 Cash Constraint
+
+The engine checks available cash before recommending new positions. If new buy recommendations would exceed the agent's cash balance:
+
+1. Only **new entries** are affected (existing positions are not touched)
+2. New entry weights are **proportionally scaled down** to fit within available cash
+3. The system logs the scaling factor for transparency
+
+This prevents the system from recommending trades the agent can't afford.
+
+---
+
+## 9. The Execution Pipeline
+
+Here's the complete sequence of events from data collection to trade execution, in the order they actually happen:
+
+### 9.1 Nightly Data Pipeline
+
+These jobs run sequentially in the background (typically overnight):
+
+```
+1. market_data_job     → Fetches prices, fundamentals, technicals for all stocks
+2. sentiment_job       → Runs FinBERT on news, fetches StockTwits, computes velocity
+3. macro_data_job      → Fetches FRED data, VIX regime, insider filings, short interest
+4. factor_scoring_job  → Calculates 5-factor scores for all stocks
+5. strategy_execution  → Runs all agents through the engine
+```
+
+### 9.2 Strategy Execution Steps (per agent)
+
+When `strategy_execution_job` runs, it calls `StrategyEngine.execute_for_agent()` for each active agent. Here's what happens inside:
+
+**Step 0: Safety checks**
+- Drawdown circuit breaker: Is the portfolio down more than the max? If yes, liquidate everything and stop.
+- Rebalance frequency gate: Has this agent already rebalanced recently? If yes, skip this run.
+
+**Step 1: Resolve configuration**
+- Map agent's strategy type (e.g., "momentum") to a strategy preset
+- Apply agent-specific overrides (universe, sentiment weight, risk parameters)
+
+**Step 2: Gather data**
+- Market data: prices, fundamentals, moving averages, ATR (from database or pre-fetched)
+- Sentiment data: news_sentiment, social_sentiment, velocity (from database)
+
+**Step 3: Enrich sentiment with temporal features**
+- The `TemporalSentimentAnalyzer` queries the `sentiment_history` table for the last 30 days
+- Computes streak, trend slope, persistence, and breakout flags for each stock
+- These features power Layers 6 and 7 of the integration engine
+
+**Step 4: Run sentiment-factor integration**
+- The `SentimentFactorIntegrator` runs all 7 layers
+- Produces an `integrated_composite` score (0-100) for each stock
+- These scores are injected into market_data so the strategy can use them for ranking
+
+**Step 5: Execute strategy**
+- The strategy-level sentiment overlay is **disabled** (set to `SentimentMode.DISABLED`) because the 7-layer integrator already handles sentiment
+- The strategy's signal generators produce raw signals
+- The strategy's portfolio constructor converts signals to position recommendations
+- The strategy's risk management pass applies position caps, sector limits, stops, and correlation filters
+
+**Step 6: Post-processing**
+- **Cash constraint**: Scale down new entries to fit within available cash
+- **Macro Risk Overlay**: Compute the overlay from credit spreads, VIX, yield curve, seasonality, and insider breadth. Multiply ALL position weights by the `risk_scale_factor` (0.25 to 1.25).
+
+**Step 7: Position diffing**
+- Compare recommended positions against current holdings
+- Generate order actions: buy (new entry), sell (exit), increase, decrease, or hold
+- Compute current weights from shares * price / allocated_capital
+
+**Step 8-10: Safety exits**
+- Stop-loss check: Any held position whose price has breached its stop generates a sell action
+- Take-profit check: Any held position that has reached its target generates a sell action
+- Position aging: Any position held longer than its max horizon generates a sell action
+- These override any hold/increase recommendations from the strategy
+
+**Step 11: Trade thesis generation**
+- Each buy/increase action is enriched with a human-readable trade thesis
+- Includes strategy name, integrated score, signal strength, regime, weight, entry price, stop, target, and time horizon
+- This powers the UI's trade explanation feature
+
+### 9.3 Order Flow
+
+```
+ExecutionResult (positions + order actions)
+        │
+        ▼
+   Broker Layer (Alpaca)
+        │
+        ├── Buy orders  → Market/limit orders via Alpaca API
+        ├── Sell orders → Market orders via Alpaca API
+        └── Hold/decrease → Adjust or no action
+```
+
+---
+
+## 10. Glossary
+
+| Term | Definition |
+|------|-----------|
+| **Agent** | A user-created autonomous trading bot that follows a specific strategy |
+| **ATR** | Average True Range — measures daily price volatility over 14 days |
+| **Backwardation** | When short-term VIX exceeds long-term VIX (VIX > VIX3M). Signals panic. |
+| **Circuit Breaker** | Automatic portfolio liquidation when drawdown exceeds the configured maximum |
+| **Composite Score** | Weighted combination of factor scores; basis for stock ranking |
+| **Contango** | When long-term VIX exceeds short-term VIX (VIX3M > VIX). Normal, calm market state. |
+| **Convergence** | When factor signals and sentiment signals agree in direction |
+| **Cross-Sectional** | Comparing stocks relative to each other (ranking), as opposed to time-series (absolute) |
+| **Drawdown** | Peak-to-trough decline in portfolio value, expressed as a percentage |
+| **Factor** | A measurable stock characteristic (momentum, value, quality, etc.) that predicts returns |
+| **FRED** | Federal Reserve Economic Data — free API for macroeconomic data |
+| **Gross Exposure** | Total long weight + total short weight. Measures total portfolio activity. |
+| **Hysteresis** | A "stickiness" band that prevents unnecessary position changes from small signal fluctuations |
+| **Integrated Composite** | The final 0-100 score after blending factors + sentiment through 7 layers |
+| **Market Neutral** | A portfolio where total long exposure equals total short exposure (zero net market beta) |
+| **Net Exposure** | Total long weight - total short weight. Measures directional market bet. |
+| **OAS** | Option-Adjusted Spread — the yield premium of corporate bonds over treasuries |
+| **Overlay** | A system that modifies position sizes without changing position direction |
+| **Percentile Rank** | Where a stock falls in the universe distribution (0 = worst, 100 = best) |
+| **Regime** | The current market state (risk-on, neutral, risk-off) detected from aggregate sentiment |
+| **Risk Parity** | Sizing positions so each contributes equal risk to the portfolio |
+| **Risk Scale Factor** | The multiplier (0.25 to 1.25) from the Macro Risk Overlay applied to all positions |
+| **Signal** | A normalised (-100 to +100) data point about a stock from any source |
+| **Spread** | The difference between two related values (e.g., 10Y yield - 2Y yield) |
+| **Time-Series** | Analysing a single stock over time (e.g., "is the stock trending up?") |
+| **VIX** | CBOE Volatility Index — measures expected S&P 500 volatility over the next 30 days |
+| **Z-Score** | Number of standard deviations from the mean. Z=2 means 2 standard deviations above average. |
+
+---
+
+*This document was generated from the AgentFund codebase. For implementation details, see the source files in `backend/core/strategies/`, `backend/core/sentiment_integration.py`, `backend/core/macro_risk_overlay.py`, and `backend/core/engine.py`.*
