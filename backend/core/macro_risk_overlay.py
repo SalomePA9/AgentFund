@@ -294,7 +294,8 @@ class MacroRiskOverlay:
                 if d.get("net_sentiment") is not None
             ]
             if net_sentiments:
-                snapshot.insider_breadth_signal = float(np.mean(net_sentiments))
+                breadth = float(np.mean(net_sentiments))
+                snapshot.insider_breadth_signal = max(-100.0, min(100.0, breadth))
                 snapshot.insider_breadth_available = True
 
         return snapshot
