@@ -160,6 +160,7 @@ class StrategyEngine:
         insider_data: dict[str, dict[str, Any]] | None = None,
         vol_regime_data: dict[str, Any] | None = None,
         short_interest_data: dict[str, dict[str, Any]] | None = None,
+        pre_computed_overlay: "OverlayResult | None" = None,
     ) -> ExecutionResult:
         """
         Run the full strategy pipeline for a single agent.
@@ -308,12 +309,17 @@ class StrategyEngine:
             # term structure, yield curve, seasonality, insider breadth).
             # This is the cross-agent risk coordinator that reduces
             # exposure when multiple uncorrelated signals confirm danger.
-            overlay = MacroRiskOverlay()
-            overlay_result = overlay.compute(
-                macro_data=macro_data,
-                insider_data=insider_data,
-                vol_regime_data=vol_regime_data,
-            )
+            # Use pre-computed overlay if provided (avoids redundant
+            # computation when shared across agents).
+            if pre_computed_overlay is not None:
+                overlay_result = pre_computed_overlay
+            else:
+                overlay = MacroRiskOverlay()
+                overlay_result = overlay.compute(
+                    macro_data=macro_data,
+                    insider_data=insider_data,
+                    vol_regime_data=vol_regime_data,
+                )
 
             if overlay_result.risk_scale_factor != 1.0 and output:
                 for pos in output.positions:

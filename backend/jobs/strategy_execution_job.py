@@ -977,6 +977,25 @@ async def run_strategy_execution_job() -> dict:
             await _fetch_macro_overlay_data(supabase)
         )
 
+        # Pre-compute MacroRiskOverlay once (deterministic for all agents)
+        from core.macro_risk_overlay import MacroRiskOverlay
+
+        pre_overlay = None
+        try:
+            overlay = MacroRiskOverlay()
+            pre_overlay = overlay.compute(
+                macro_data=macro_data,
+                insider_data=insider_data,
+                vol_regime_data=vol_regime_data,
+            )
+            logger.info(
+                "Pre-computed overlay: scale=%.2f regime=%s",
+                pre_overlay.risk_scale_factor,
+                pre_overlay.regime_label,
+            )
+        except Exception:
+            logger.warning("Failed to pre-compute overlay", exc_info=True)
+
         # Execute strategy for each agent
         engine = StrategyEngine(db_client=supabase)
         results: list[ExecutionResult] = []
@@ -1008,6 +1027,7 @@ async def run_strategy_execution_job() -> dict:
                 insider_data=insider_data,
                 vol_regime_data=vol_regime_data,
                 short_interest_data=short_interest_data,
+                pre_computed_overlay=pre_overlay,
             )
             results.append(result)
 
