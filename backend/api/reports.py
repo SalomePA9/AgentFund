@@ -104,8 +104,14 @@ def _fetch_macro_overlay_data(db: Client) -> dict:
             macro_data["scale_factor"] = row.get("risk_scale_factor")
             macro_data["composite_score"] = row.get("composite_risk_score")
             macro_data["warnings"] = row.get("warnings") or []
-            contributions = row.get("signal_contributions") or {}
-            macro_data["contributions"] = contributions
+            # Individual signal columns stored directly on the overlay row
+            macro_data["contributions"] = {
+                "credit_spread": row.get("credit_spread_signal"),
+                "yield_curve": row.get("yield_curve_signal"),
+                "vol_regime": row.get("vol_regime_signal"),
+                "seasonality": row.get("seasonality_signal"),
+                "insider_breadth": row.get("insider_breadth_signal"),
+            }
     except Exception:
         logger.debug("macro_risk_overlay_state table not available", exc_info=True)
 
