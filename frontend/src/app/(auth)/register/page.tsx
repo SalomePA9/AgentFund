@@ -32,7 +32,7 @@ export default function RegisterPage() {
 
     try {
       await register(email, password);
-      router.push('/');
+      router.push('/overview');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
