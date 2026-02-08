@@ -122,11 +122,13 @@ class VolatilityRegimeClient:
             else 0.0
         )
 
-        # Realized vol of SPY (20-day annualized)
+        # Realized vol of SPY (20-day annualized) using log returns
+        # to match VIX's log-normal assumption for consistent IV-RV spread
         realized_vol = None
         if len(spy_prices) >= 21:
-            spy_returns = np.diff(spy_prices[-21:]) / np.array(spy_prices[-21:-1])
-            realized_vol = float(np.std(spy_returns) * np.sqrt(252) * 100)
+            spy_arr = np.array(spy_prices[-21:])
+            log_returns = np.log(spy_arr[1:] / spy_arr[:-1])
+            realized_vol = float(np.std(log_returns, ddof=1) * np.sqrt(252) * 100)
 
         # Implied vs realized spread
         # VIX is annualized implied vol in %; realized_vol is also annualized %
