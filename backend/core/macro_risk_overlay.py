@@ -255,36 +255,30 @@ class MacroRiskOverlay:
             snapshot.yield_curve_available = True
 
         # Seasonality (always available — purely calendar-based)
+        # Computed synchronously since it only uses calendar data.
         from core.strategies.uncorrelated_signals import SeasonalitySignal
+        from datetime import datetime, timezone
 
-        seasonality = SeasonalitySignal()
-        import asyncio
+        import calendar as cal_mod
 
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're already in an async context — schedule as coroutine
-                import concurrent.futures
+        now = datetime.now(timezone.utc)
+        month = now.month
+        day = now.day
+        _, days_in_month = cal_mod.monthrange(now.year, month)
 
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    signals = pool.submit(
-                        asyncio.run,
-                        seasonality.generate(["_MARKET"], {}),
-                    ).result()
-            else:
-                signals = asyncio.run(seasonality.generate(["_MARKET"], {}))
+        monthly_bias = SeasonalitySignal.MONTHLY_BIAS.get(month, 0.0)
+        base_signal = monthly_bias / 0.015 * 60
 
-            if signals:
-                snapshot.seasonality_signal = signals[0].value
-                snapshot.seasonality_available = True
-        except Exception:
-            # Fallback: compute synchronously from monthly bias
-            from datetime import datetime
+        # End-of-month effect: last 3 days tend to be positive
+        eom_boost = 15.0 if day >= days_in_month - 2 else 0.0
 
-            month = datetime.utcnow().month
-            bias = SeasonalitySignal.MONTHLY_BIAS.get(month, 0.0)
-            snapshot.seasonality_signal = max(-100, min(100, bias / 0.015 * 60))
-            snapshot.seasonality_available = True
+        # End-of-quarter additional boost
+        eoq_boost = 10.0 if month in (3, 6, 9, 12) and day >= days_in_month - 2 else 0.0
+
+        snapshot.seasonality_signal = max(
+            -100, min(100, base_signal + eom_boost + eoq_boost)
+        )
+        snapshot.seasonality_available = True
 
         # Insider breadth: aggregate across all symbols
         if insider_data:
