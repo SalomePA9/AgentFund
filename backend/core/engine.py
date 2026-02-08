@@ -180,6 +180,9 @@ class StrategyEngine:
             insider_data: Pre-fetched insider transaction data per symbol.
             vol_regime_data: Pre-fetched VIX/volatility regime data.
             short_interest_data: Pre-fetched short interest data per symbol.
+                Currently stored on ExecutionResult for downstream
+                consumers (reports, logging) but not used by the overlay
+                which operates on portfolio-level macro signals only.
 
         Returns:
             ExecutionResult with position recommendations.
