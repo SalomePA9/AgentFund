@@ -141,7 +141,7 @@ class FredClient:
         current = values[-1]
         arr = np.array(values)
         mean = float(np.mean(arr))
-        std = float(np.std(arr))
+        std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
 
         z_score = (current - mean) / std if std > 0 else 0.0
 
