@@ -16,6 +16,21 @@ class PerformanceSnapshot(BaseModel):
     sharpe_ratio: float | None = None
     max_drawdown: float | None = None
 
+    # Macro risk overlay
+    macro_regime: str | None = None
+    macro_scale_factor: float | None = None
+    macro_composite_score: float | None = None
+    macro_warnings: list[str] | None = None
+
+    # Individual signal readings
+    credit_spread_signal: float | None = None
+    yield_curve_signal: float | None = None
+    vol_regime_signal: float | None = None
+    vix_level: float | None = None
+    vix_regime: str | None = None
+    seasonality_signal: float | None = None
+    insider_breadth_signal: float | None = None
+
 
 class PositionSnapshot(BaseModel):
     """Position snapshot for report."""

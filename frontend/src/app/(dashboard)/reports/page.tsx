@@ -156,6 +156,95 @@ export default function ReportsPage() {
             </div>
           )}
 
+          {/* Macro Risk Overlay */}
+          {selectedReport.performance_snapshot?.macro_regime && (
+            <div>
+              <h3 className="text-lg font-medium mb-3">Macro Risk Overlay</h3>
+              <div className="card space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-xs text-zinc-500 uppercase tracking-wide">Regime</div>
+                    <div className={`text-sm font-semibold mt-1 ${
+                      selectedReport.performance_snapshot.macro_regime === 'normal'
+                        ? 'text-success'
+                        : selectedReport.performance_snapshot.macro_regime === 'high_risk'
+                          ? 'text-error'
+                          : 'text-warning'
+                    }`}>
+                      {selectedReport.performance_snapshot.macro_regime.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                    </div>
+                  </div>
+                  {selectedReport.performance_snapshot.macro_scale_factor != null && (
+                    <div>
+                      <div className="text-xs text-zinc-500 uppercase tracking-wide">Position Sizing</div>
+                      <div className="text-sm font-semibold mt-1">
+                        {((selectedReport.performance_snapshot.macro_scale_factor - 1) * 100) < 0 ? 'Reduced' : 'Increased'}{' '}
+                        {Math.abs((selectedReport.performance_snapshot.macro_scale_factor - 1) * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  )}
+                  {selectedReport.performance_snapshot.macro_composite_score != null && (
+                    <div>
+                      <div className="text-xs text-zinc-500 uppercase tracking-wide">Composite Score</div>
+                      <div className={`text-sm font-semibold mt-1 ${getValueColorClass(selectedReport.performance_snapshot.macro_composite_score)}`}>
+                        {selectedReport.performance_snapshot.macro_composite_score > 0 ? '+' : ''}{selectedReport.performance_snapshot.macro_composite_score.toFixed(0)} / 100
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Signal readings */}
+                {(() => {
+                  const snap = selectedReport.performance_snapshot;
+                  const signals: [string, number | null | undefined][] = [
+                    ['Credit Spreads', snap.credit_spread_signal],
+                    ['Yield Curve', snap.yield_curve_signal],
+                    ['Volatility', snap.vol_regime_signal],
+                    ['Seasonality', snap.seasonality_signal],
+                    ['Insider Breadth', snap.insider_breadth_signal],
+                  ];
+                  const active = signals.filter(([, v]) => v != null) as [string, number][];
+                  if (active.length === 0) return null;
+                  return (
+                    <div className="border-t border-border pt-3">
+                      <div className="text-xs text-zinc-500 uppercase tracking-wide mb-2">Signal Readings</div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {active.map(([label, value]) => {
+                          const sentiment = value > 10 ? 'Bullish' : value < -10 ? 'Bearish' : 'Neutral';
+                          const color = value > 10 ? 'text-success' : value < -10 ? 'text-error' : 'text-zinc-400';
+                          return (
+                            <div key={label} className="flex items-center justify-between text-sm py-1">
+                              <span className="text-zinc-400">{label}</span>
+                              <span className={color}>{value > 0 ? '+' : ''}{value.toFixed(0)} ({sentiment})</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {snap.vix_level != null && (
+                        <div className="text-xs text-zinc-500 mt-2">
+                          VIX: {snap.vix_level.toFixed(1)}{snap.vix_regime ? ` (${snap.vix_regime})` : ''}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Warnings */}
+                {selectedReport.performance_snapshot.macro_warnings &&
+                  selectedReport.performance_snapshot.macro_warnings.length > 0 && (
+                    <div className="border-t border-border pt-3">
+                      <div className="text-xs text-zinc-500 uppercase tracking-wide mb-1">Warnings</div>
+                      <ul className="text-sm text-warning space-y-1">
+                        {selectedReport.performance_snapshot.macro_warnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+              </div>
+            </div>
+          )}
+
           {/* Report Content */}
           <div className="card">
             <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap leading-relaxed">

@@ -43,6 +43,19 @@ class DailyReportData:
     # Recent activities
     activities: list[dict[str, Any]] | None = None
 
+    # Macro risk overlay
+    macro_regime: str | None = None
+    macro_scale_factor: float | None = None
+    macro_composite_score: float | None = None
+    macro_warnings: list[str] | None = None
+    credit_spread_signal: float | None = None
+    yield_curve_signal: float | None = None
+    vol_regime_signal: float | None = None
+    vix_level: float | None = None
+    vix_regime: str | None = None
+    seasonality_signal: float | None = None
+    insider_breadth_signal: float | None = None
+
 
 class DailyReportTemplate(BaseTemplate):
     """Template for daily agent report emails."""
@@ -103,6 +116,8 @@ class DailyReportTemplate(BaseTemplate):
             </div>
         </div>
 
+        {cls._render_macro_overlay(data)}
+
         {cls._render_positions(data)}
 
         {cls._render_activities(data)}
@@ -130,34 +145,28 @@ class DailyReportTemplate(BaseTemplate):
         metrics = []
 
         if data.sharpe_ratio is not None:
-            metrics.append(
-                f"""
+            metrics.append(f"""
                 <div class="metric">
                     <div class="metric-label">Sharpe Ratio</div>
                     <div class="metric-value">{cls.format_number(data.sharpe_ratio, 2)}</div>
                 </div>
-            """
-            )
+            """)
 
         if data.win_rate is not None:
-            metrics.append(
-                f"""
+            metrics.append(f"""
                 <div class="metric">
                     <div class="metric-label">Win Rate</div>
                     <div class="metric-value">{cls.format_number(data.win_rate, 1)}%</div>
                 </div>
-            """
-            )
+            """)
 
         if data.max_drawdown is not None:
-            metrics.append(
-                f"""
+            metrics.append(f"""
                 <div class="metric">
                     <div class="metric-label">Max Drawdown</div>
                     <div class="metric-value negative">{cls.format_number(abs(data.max_drawdown), 2)}%</div>
                 </div>
-            """
-            )
+            """)
 
         if not metrics:
             return ""
@@ -168,6 +177,101 @@ class DailyReportTemplate(BaseTemplate):
             <div style="display: flex; flex-wrap: wrap; margin: -4px;">
                 {''.join(metrics)}
             </div>
+        """
+
+    @classmethod
+    def _render_macro_overlay(cls, data: DailyReportData) -> str:
+        """Render macro risk overlay section."""
+        if not data.macro_regime:
+            return ""
+
+        # Regime badge colour
+        regime_colors = {
+            "normal": cls.COLORS.get("success", "#22c55e"),
+            "elevated_risk": cls.COLORS.get("warning", "#eab308"),
+            "high_risk": cls.COLORS.get("error", "#ef4444"),
+        }
+        regime_color = regime_colors.get(
+            data.macro_regime, cls.COLORS.get("text_primary", "#fff")
+        )
+        regime_display = data.macro_regime.replace("_", " ").title()
+
+        # Scale factor description
+        scale_str = ""
+        if data.macro_scale_factor is not None:
+            pct = (data.macro_scale_factor - 1.0) * 100
+            direction = "reduced" if pct < 0 else "increased"
+            scale_str = f'<div class="metric"><div class="metric-label">Position Sizing</div><div class="metric-value">{direction} {abs(pct):.0f}%</div></div>'
+
+        composite_str = ""
+        if data.macro_composite_score is not None:
+            composite_str = f'<div class="metric"><div class="metric-label">Composite Score</div><div class="metric-value">{data.macro_composite_score:+.0f} / 100</div></div>'
+
+        # Build signal rows
+        signals = []
+        signal_map = [
+            ("Credit Spreads", data.credit_spread_signal),
+            ("Yield Curve", data.yield_curve_signal),
+            ("Volatility", data.vol_regime_signal),
+            ("Seasonality", data.seasonality_signal),
+            ("Insider Breadth", data.insider_breadth_signal),
+        ]
+        for label, value in signal_map:
+            if value is not None:
+                if value > 10:
+                    sentiment = "bullish"
+                    color = cls.COLORS.get("success", "#22c55e")
+                elif value < -10:
+                    sentiment = "bearish"
+                    color = cls.COLORS.get("error", "#ef4444")
+                else:
+                    sentiment = "neutral"
+                    color = cls.COLORS.get("text_secondary", "#a1a1aa")
+                signals.append(
+                    f'<tr><td style="padding: 4px 8px;">{label}</td>'
+                    f'<td style="padding: 4px 8px; text-align: right;" class="mono">{value:+.0f}</td>'
+                    f'<td style="padding: 4px 8px; color: {color};">{sentiment}</td></tr>'
+                )
+
+        signal_table = ""
+        if signals:
+            vix_note = ""
+            if data.vix_level is not None:
+                vix_regime_str = f" ({data.vix_regime})" if data.vix_regime else ""
+                vix_note = f'<p style="font-size: 12px; color: {cls.COLORS.get("text_secondary", "#a1a1aa")}; margin-top: 8px;">VIX: {data.vix_level:.1f}{vix_regime_str}</p>'
+
+            signal_table = f"""
+                <div class="divider"></div>
+                <h4 style="margin-bottom: 8px;">Signal Readings</h4>
+                <table style="width: 100%; font-size: 14px;">
+                    {''.join(signals)}
+                </table>
+                {vix_note}
+            """
+
+        # Warnings
+        warnings_html = ""
+        if data.macro_warnings:
+            warning_items = "".join(
+                f'<li style="color: {cls.COLORS.get("warning", "#eab308")}; font-size: 13px;">{w}</li>'
+                for w in data.macro_warnings
+            )
+            warnings_html = f'<div class="divider"></div><ul style="margin: 0; padding-left: 16px;">{warning_items}</ul>'
+
+        return f"""
+        <div class="card">
+            <h3>Macro Risk Overlay</h3>
+            <div style="display: flex; flex-wrap: wrap; margin: -4px;">
+                <div class="metric">
+                    <div class="metric-label">Regime</div>
+                    <div class="metric-value" style="color: {regime_color};">{regime_display}</div>
+                </div>
+                {scale_str}
+                {composite_str}
+            </div>
+            {signal_table}
+            {warnings_html}
+        </div>
         """
 
     @classmethod
@@ -184,8 +288,7 @@ class DailyReportTemplate(BaseTemplate):
             current_price = pos.get("current_price", 0)
             pnl_pct = pos.get("unrealized_pnl_pct", 0)
 
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="font-weight: 500;">{ticker}</td>
                     <td class="mono">{shares}</td>
@@ -193,8 +296,7 @@ class DailyReportTemplate(BaseTemplate):
                     <td class="mono">${current_price:,.2f}</td>
                     <td>{cls.format_percent(pnl_pct)}</td>
                 </tr>
-            """
-            )
+            """)
 
         return f"""
         <div class="card">
@@ -237,15 +339,13 @@ class DailyReportTemplate(BaseTemplate):
             else:
                 badge_class = "badge-warning"
 
-            items.append(
-                f"""
+            items.append(f"""
                 <div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid {cls.COLORS['border']};">
                     <span class="badge {badge_class}" style="margin-right: 12px;">{activity_type}</span>
                     <span style="font-weight: 500; margin-right: 8px;">{ticker}</span>
                     <span style="color: {cls.COLORS['text_secondary']}; font-size: 14px;">{details}</span>
                 </div>
-            """
-            )
+            """)
 
         return f"""
         <div class="card">
@@ -285,6 +385,46 @@ Open Positions: {data.positions_count}
 -------------------
 {data.report_content}
 """
+
+        if data.macro_regime:
+            regime_display = data.macro_regime.replace("_", " ").title()
+            text += f"""
+MACRO RISK OVERLAY
+-------------------
+Regime: {regime_display}
+"""
+            if data.macro_scale_factor is not None:
+                pct = (data.macro_scale_factor - 1.0) * 100
+                direction = "reduced" if pct < 0 else "increased"
+                text += f"Position Sizing: {direction} by {abs(pct):.0f}% (scale {data.macro_scale_factor:.2f})\n"
+            if data.macro_composite_score is not None:
+                text += f"Composite Score: {data.macro_composite_score:+.0f} / 100\n"
+
+            signal_map = [
+                ("Credit Spreads", data.credit_spread_signal),
+                ("Yield Curve", data.yield_curve_signal),
+                ("Volatility", data.vol_regime_signal),
+                ("Seasonality", data.seasonality_signal),
+                ("Insider Breadth", data.insider_breadth_signal),
+            ]
+            signal_lines = []
+            for label, value in signal_map:
+                if value is not None:
+                    sentiment = (
+                        "bullish"
+                        if value > 10
+                        else ("bearish" if value < -10 else "neutral")
+                    )
+                    signal_lines.append(f"  {label}: {value:+.0f} ({sentiment})")
+            if signal_lines:
+                text += "Signals:\n" + "\n".join(signal_lines) + "\n"
+            if data.vix_level is not None:
+                vix_regime_str = f" ({data.vix_regime})" if data.vix_regime else ""
+                text += f"  VIX: {data.vix_level:.1f}{vix_regime_str}\n"
+            if data.macro_warnings:
+                text += "Warnings:\n"
+                for w in data.macro_warnings:
+                    text += f"  - {w}\n"
 
         if data.positions:
             text += """
