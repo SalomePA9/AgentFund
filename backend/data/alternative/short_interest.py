@@ -26,7 +26,6 @@ import asyncio
 import logging
 from typing import Any
 
-import numpy as np
 import yfinance as yf
 
 logger = logging.getLogger(__name__)
