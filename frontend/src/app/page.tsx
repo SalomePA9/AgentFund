@@ -1,6 +1,24 @@
+'use client';
+
+import { useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated, loadUser } = useAuthStore();
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/overview');
+    }
+  }, [isAuthenticated, router]);
+
   return (
     <main className="min-h-screen bg-background">
       {/* Navigation */}
