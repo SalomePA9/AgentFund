@@ -108,6 +108,18 @@ from core.strategies.signals import (
     ZScoreSignal,
 )
 
+# Uncorrelated signal generators
+from core.strategies.uncorrelated_signals import (
+    AccrualsQualitySignal,
+    CreditSpreadSignal,
+    EarningsRevisionsSignal,
+    InsiderTransactionSignal,
+    SeasonalitySignal,
+    ShortInterestSignal,
+    VolatilityRegimeSignal,
+    YieldCurveSignal,
+)
+
 __all__ = [
     # Enums
     "StrategyType",
@@ -139,6 +151,15 @@ __all__ = [
     "ShortTermReversalSignal",
     "ZScoreSignal",
     "SignalCombiner",
+    # Uncorrelated signal generators
+    "CreditSpreadSignal",
+    "YieldCurveSignal",
+    "VolatilityRegimeSignal",
+    "InsiderTransactionSignal",
+    "ShortInterestSignal",
+    "SeasonalitySignal",
+    "EarningsRevisionsSignal",
+    "AccrualsQualitySignal",
     # Strategy implementations
     "TrendFollowingStrategy",
     "CrossSectionalFactorStrategy",

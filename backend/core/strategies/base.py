@@ -96,6 +96,20 @@ class SignalType(str, Enum):
     REVERSAL = "reversal"
     DIVIDEND_YIELD = "dividend_yield"
 
+    # -- Uncorrelated / Cross-Asset Signals --
+    CREDIT_SPREAD = "credit_spread"
+    YIELD_CURVE = "yield_curve"
+    VOLATILITY_REGIME = "volatility_regime"
+
+    # -- Alternative Data Signals --
+    INSIDER_TRANSACTIONS = "insider_transactions"
+    SHORT_INTEREST = "short_interest"
+    SEASONALITY = "seasonality"
+
+    # -- Fundamental Regime Signals --
+    EARNINGS_REVISIONS = "earnings_revisions"
+    ACCRUALS_QUALITY = "accruals_quality"
+
 
 class PositionSide(str, Enum):
     """Position direction."""
