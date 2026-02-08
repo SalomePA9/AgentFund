@@ -210,7 +210,12 @@ async def connect_broker(
         account = broker.get_account()
     except Exception as e:
         error_str = str(e).lower()
-        if "forbidden" in error_str or "403" in error_str or "unauthorized" in error_str or "401" in error_str:
+        if (
+            "forbidden" in error_str
+            or "403" in error_str
+            or "unauthorized" in error_str
+            or "401" in error_str
+        ):
             detail = "Invalid API credentials. Please verify your API key and secret are correct and have not been revoked."
         elif "timeout" in error_str or "timed out" in error_str:
             detail = "Connection to Alpaca timed out. Please try again."
