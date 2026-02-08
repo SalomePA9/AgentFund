@@ -25,7 +25,7 @@ API docs: https://fred.stlouisfed.org/docs/api/fred/
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -94,7 +94,7 @@ class FredClient:
         self, series_id: str, lookback_days: int
     ) -> list[dict[str, str]]:
         """Fetch a single FRED series."""
-        start_date = (datetime.utcnow() - timedelta(days=lookback_days)).strftime(
+        start_date = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime(
             "%Y-%m-%d"
         )
 

@@ -26,7 +26,7 @@ All signals normalised to -100 (strong sell) to +100 (strong buy).
 from __future__ import annotations
 
 import calendar
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -440,7 +440,7 @@ class SeasonalitySignal(SignalGenerator):
     async def generate(
         self, symbols: list[str], market_data: dict[str, Any], **kwargs
     ) -> list[Signal]:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         month = now.month
         day = now.day
         _, days_in_month = calendar.monthrange(now.year, month)
