@@ -195,3 +195,244 @@ Before any strategy runs, the `FactorCalculator` scores every stock on five fund
 The five factors are combined into a single composite score using strategy-specific weights. A momentum strategy weights momentum at 100% and ignores value; a quality-value strategy splits 50/50 between value and quality. These weights are set in each strategy's preset configuration.
 
 ---
+
+## 4. The Nine Strategies
+
+AgentFund has two tiers of strategies:
+
+- **4 user-facing strategies** (simpler, designed for most investors): Momentum, Quality Value, Quality Momentum, Dividend Growth
+- **4 advanced strategies** (for power users who understand the trade-offs): Trend Following, Short-Term Reversal, Statistical Arbitrage, Volatility Premium
+
+All eight strategies are concrete implementations that inherit from `BaseStrategy`. The first four all use the `CrossSectionalFactorStrategy` engine (they rank stocks against each other using different factor weights), while the advanced four each have their own specialised engine.
+
+### How Strategies Use Sentiment and Uncorrelated Signals
+
+Every strategy interacts with sentiment and uncorrelated signals through **three independent layers**:
+
+1. **Pre-execution integration** — The `SentimentFactorIntegrator` blends sentiment into factor scores *before* the strategy runs. This produces an `integrated_composite` score (0-100) that the strategy uses for ranking. Every strategy benefits from this.
+
+2. **Macro Risk Overlay** — After the strategy produces its positions, the `MacroRiskOverlay` scales all position sizes based on credit spreads, VIX, yield curve, seasonality, and insider breadth. Every strategy is affected by this equally.
+
+3. **Strategy-specific sentiment mode** — Each strategy is *configured* with a sentiment mode (FILTER, ALPHA, CONFIRMATION, RISK_ADJUSTMENT), but this mode is **disabled at runtime** because the 7-layer integrator (layer 1) already handles sentiment more sophisticatedly. The configured mode still documents the *intent* of how sentiment should relate to each strategy.
+
+---
+
+### 4.1 Momentum
+
+**One-sentence summary:** Buy stocks that have been going up the most over the past 6 months.
+
+**Strategy type:** Cross-Sectional Factor
+**Default sentiment mode:** FILTER (only buy winners with positive sentiment)
+**Factor weights:** Momentum 100%
+
+**How it works step by step:**
+
+1. The `CrossSectionalMomentumSignal` generator calculates 6-month returns for every stock in the universe.
+2. Stocks are ranked by return — top performers get signal values near +100, bottom performers near -100.
+3. The `SentimentFactorIntegrator` has already blended sentiment into factor scores with these weights: momentum 55%, sentiment 25%, quality 10%, volatility 10%. This means a stock with strong momentum *and* positive sentiment ranks higher than one with strong momentum but negative sentiment.
+4. The strategy selects the **top 20%** of ranked stocks for long positions.
+5. Positions are **equal-weighted** and capped at 5% each.
+6. Position sizes are **volatility-scaled**: each position is sized inversely to its stock's volatility, targeting 15% annual portfolio volatility.
+7. Stop-losses are set at 2x ATR below entry price.
+
+**Why sentiment matters here:** Pure momentum strategies are vulnerable to "momentum crashes" — sudden reversals where last year's winners collapse. This happens when crowded trades unwind. The sentiment filter catches early warning signs: if a momentum winner's sentiment starts turning negative (bad news, social media panic), the system avoids entering or exits early.
+
+**Uncorrelated signals' role:** The Macro Risk Overlay protects momentum strategies during regime changes. When credit spreads widen and the VIX spikes, it's often the start of a momentum crash. The overlay reduces all position sizes before the crash fully develops.
+
+**Best for:** Growth-oriented investors who believe trends persist. Works well in trending markets, struggles in choppy, range-bound periods.
+
+---
+
+### 4.2 Quality Value
+
+**One-sentence summary:** Buy cheap stocks (low P/E, low P/B) that are also high-quality businesses (high ROE, stable margins, low debt).
+
+**Strategy type:** Cross-Sectional Factor
+**Default sentiment mode:** CONFIRMATION (require sentiment isn't deteriorating)
+**Factor weights:** Value 50%, Quality 50%
+
+**How it works step by step:**
+
+1. The `ValueSignal` generator ranks stocks by P/E and P/B ratios (lower = better, inverted so cheap stocks score highest).
+2. The `QualitySignal` generator ranks stocks by ROE, profit margin, and financial stability.
+3. Signals are combined with equal weight (50/50) via the `SignalCombiner`.
+4. The `SentimentFactorIntegrator` uses these weights: value 30%, quality 30%, sentiment 25%, volatility 10%, dividend 5%. The sentiment integration acts as a "value trap detector" — if a stock is cheap but sentiment is collapsing, it might be cheap for a reason.
+5. The strategy selects the **top 20%** for long positions.
+6. Positions use **equal-risk** sizing (each position contributes the same amount of portfolio risk), targeting 12% annual volatility.
+7. Stop-losses are wider at 2.5x ATR, giving value stocks more room to recover from short-term dips.
+
+**Why sentiment matters here:** The biggest risk for value investors is the "value trap" — a stock that looks cheap but keeps getting cheaper because the business is deteriorating. Sentiment confirmation catches this: if news sentiment and social sentiment are both deteriorating for a cheap stock, the system reduces confidence. The sentiment velocity signal is especially important, weighted at 30%, because a *worsening* sentiment trend for a value stock is a red flag.
+
+**Uncorrelated signals' role:** Insider transactions are particularly valuable for value stocks. When company insiders buy shares of a stock that looks cheap on financial metrics, it's a strong confirmation that the value is real, not a trap. The earnings revisions signal also helps: if analysts are revising estimates upward for a cheap stock, the cheapness is more likely to correct.
+
+**Best for:** Patient, conservative investors with a long time horizon. Tends to underperform in momentum-driven bull markets but provides a margin of safety during corrections.
+
+---
+
+### 4.3 Quality Momentum
+
+**One-sentence summary:** Buy stocks with strong price momentum that also have quality fundamentals, using sentiment as a third ranking factor.
+
+**Strategy type:** Cross-Sectional Factor
+**Default sentiment mode:** ALPHA (sentiment is an additional factor signal)
+**Factor weights:** Momentum 50%, Quality 50%
+
+**How it works step by step:**
+
+1. The `CrossSectionalMomentumSignal` ranks stocks by 6-month relative returns.
+2. The `QualitySignal` ranks stocks by ROE, profit margin, and stability.
+3. Both signals are combined 50/50.
+4. The `SentimentFactorIntegrator` uses aggressive sentiment weighting: momentum 30%, quality 25%, **sentiment 35%**, volatility 10%. Sentiment is the *largest single weight* for this strategy because it acts as the tiebreaker between equally strong momentum-quality candidates.
+5. The integrated composite score is blended into the strategy's signal combiner output at 40% weight, so sentiment-favoured stocks get a meaningful ranking boost.
+6. Top 20% are selected, equal-weighted, capped at 5% each.
+7. Volatility-scaled sizing targeting 15% annual vol. Stop-losses at 2x ATR.
+
+**Why sentiment matters here:** This strategy uses sentiment more heavily than any other — it's literally the largest factor weight at 35%. The idea is GARP (Growth at a Reasonable Price): among stocks with good momentum and quality, pick the ones the market *also* feels good about. Sentiment velocity confirms that momentum will continue: if a stock is going up AND sentiment is accelerating, the trend is more likely to persist.
+
+**Uncorrelated signals' role:** Earnings revisions are particularly synergistic. A stock with strong momentum + quality + upward earnings revisions is the "trifecta" — the price trend, the business quality, and the analyst outlook all agree. The accruals quality signal adds another check: if earnings are coming from real cash flows (not accounting tricks), the momentum is more sustainable.
+
+**Best for:** Active investors who want to ride trends but with a quality safety net. A more sophisticated version of pure momentum.
+
+---
+
+### 4.4 Dividend Growth
+
+**One-sentence summary:** Buy stocks with solid dividend yields that also have quality characteristics ensuring the dividend is sustainable and growing.
+
+**Strategy type:** Cross-Sectional Factor
+**Default sentiment mode:** FILTER (avoid dividend stocks with negative sentiment)
+**Factor weights:** Quality 40%, Dividend 20%, Value 20%, Low Volatility 20%
+
+**How it works step by step:**
+
+1. The `DividendYieldSignal` ranks stocks by dividend yield (must meet a minimum of 2%).
+2. The `QualitySignal` ranks by ROE, margin, and stability — ensuring dividends are sustainable.
+3. The `ValueSignal` and `RealizedVolatilitySignal` add value and low-vol dimensions.
+4. These are combined with the multi-factor weights above.
+5. The `SentimentFactorIntegrator` uses: quality 25%, dividend 25%, sentiment 20%, value 15%, volatility 15%. News sentiment gets 60% of the sentiment weight (vs. 20% social) because institutional news is more relevant for dividend safety than retail chatter.
+6. A sentiment filter threshold of +10 is applied — the stock needs *positive* sentiment, not just neutral. This is more conservative than other strategies.
+7. Top 25% are selected (slightly broader than other strategies), equal-weighted.
+8. **Equal-risk** sizing targeting only 10% annual volatility (the most conservative target of any strategy).
+9. Stop-losses are wide at 3x ATR — income stocks need room to breathe through ex-dividend date volatility.
+
+**Why sentiment matters here:** For dividend investors, the worst outcome is a dividend cut. Companies that cut dividends see massive price drops (typically 20-30% immediately). The sentiment filter catches early warnings: deteriorating news sentiment often precedes dividend cuts by weeks or months. The sentiment velocity signal helps detect when fundamentals are worsening faster than the price reflects.
+
+**Uncorrelated signals' role:** Short interest is a strong negative signal for dividend stocks. If hedge funds are aggressively shorting a high-yield stock, they may know about impending earnings problems or a dividend cut. The credit spread signal also matters: when credit markets tighten, highly-leveraged dividend payers are the first to cut. The overlay will reduce dividend stock exposure when credit conditions deteriorate.
+
+**Best for:** Income-focused investors, retirees, conservative portfolios that prioritise capital preservation and steady cash flow.
+
+---
+
+### 4.5 Trend Following
+
+**One-sentence summary:** Go long assets in uptrends and short assets in downtrends, using moving average crossovers with volatility-based position sizing.
+
+**Strategy type:** Trend Following (dedicated engine)
+**Default sentiment mode:** RISK_ADJUSTMENT (reduce size when sentiment diverges from trend)
+**Supports shorting:** Yes
+
+**How it works step by step:**
+
+1. The `TimeSeriesMomentumSignal` generator computes trend strength for each stock:
+   - Calculates short-window (20-day) and long-window (60-day) returns
+   - Checks if price is above both the 20-day and 60-day moving averages
+   - Combines into a trend score: `(short_return * 0.4 + long_return * 0.6) * 100 + trend_direction * 10`
+2. Stocks with a signal value above +20 go **long**. Stocks below -20 go **short** (if shorting is enabled).
+3. Each position is **volatility-scaled**: `weight = (target_vol / stock_vol) * (signal_strength / 100)`. A stock with 10% annualised volatility in a portfolio targeting 15% gets a 1.5x weight multiplier, while a 30% vol stock gets a 0.5x multiplier. This creates a natural risk-parity effect.
+4. Max position size: 10%. Max portfolio leverage: 1.5x (allows for combined long + short exposure).
+5. **Hysteresis** is applied to prevent "whipsaw" — if a stock is already held, it gets a 5-point bonus to its signal strength, so it won't be exited just because the signal dipped marginally below the threshold. Direction flips (long to short) require extra conviction (signal > 2x the hysteresis band).
+6. Max holding period: ~90 days (1 quarter).
+
+**Why sentiment matters here:** The risk-adjustment mode reduces position sizes when sentiment diverges from the price trend. Example: if AAPL is in a technical uptrend but social sentiment has turned negative, the position size is reduced by up to 20%. Conversely, when sentiment confirms the trend (uptrend + bullish sentiment), positions can be up to 20% larger. This catches situations where the price trend hasn't broken yet but market participants are already getting nervous.
+
+**Uncorrelated signals' role:** The VIX regime signal is critical for trend following. When VIX spikes above 35 and the term structure inverts (backwardation), it signals a panic environment where trends break down rapidly. The overlay reduces all trend-following positions to protect against sudden reversals. The yield curve signal helps identify macro regime changes (inversions precede recessions) that can invalidate long-running equity trends.
+
+**Best for:** Tactical allocation, crisis hedging, diversification from long-only strategies. Trend following historically provides "crisis alpha" — positive returns during extended equity drawdowns.
+
+---
+
+### 4.6 Short-Term Reversal
+
+**One-sentence summary:** Buy stocks that dropped sharply over the last 1-5 days (oversold) and sell stocks that rose sharply (overbought), betting they'll revert to the mean.
+
+**Strategy type:** Short-Term Reversal (dedicated engine)
+**Default sentiment mode:** CONFIRMATION (only trade reversals when sentiment also reverting)
+**Supports shorting:** Yes (market-neutral by default)
+
+**How it works step by step:**
+
+1. The `ShortTermReversalSignal` generator calculates 5-day returns for all stocks.
+2. Returns are converted to **z-scores** — how many standard deviations each stock's return is from the cross-sectional average.
+3. Only stocks with |z-score| >= 1.5 are considered. A stock that dropped 2.5 standard deviations is a stronger candidate than one that dropped 1.6.
+4. The reversal signal is **inverted**: stocks with negative returns (z < 0) get positive signals (buy), and vice versa.
+5. Position sizing scales with z-score extremity: `weight = min(z_score / 5 * 0.05, max_position_size)`. More extreme oversold = larger position.
+6. Max position size is small: 3% (more positions, more diversification).
+7. The portfolio is **balanced for market neutrality**: total long weight = total short weight. This means the strategy profits from the spread between losers bouncing back and winners pulling back, regardless of overall market direction.
+8. **Hysteresis band of 3.0** prevents unnecessary churn.
+9. Holding period: 5 days (this is a short-horizon strategy).
+
+**Why sentiment matters here:** The confirmation mode is crucial. Without it, the strategy would buy every stock that drops sharply — including stocks dropping on legitimate bad news (earnings miss, fraud discovery, product failure). These are "falling knives" that don't revert.
+
+The sentiment velocity signal (weighted at 40% — the highest of any strategy) distinguishes between:
+- **Noise-driven drops** (no sentiment change or sentiment improving): Good reversal candidate
+- **Fundamental drops** (sentiment plunging alongside price): Falling knife — skip it
+
+**Uncorrelated signals' role:** Short interest provides a critical filter. If a stock is heavily shorted (>10% of float) and just dropped sharply, the decline may be a short squeeze setup (bullish) or a continued bear raid (bearish). The insider transaction signal helps resolve ambiguity: if insiders are buying into the dip, reversion is more likely.
+
+**Best for:** Active traders comfortable with high turnover and short holding periods. Requires low transaction costs to be profitable.
+
+---
+
+### 4.7 Statistical Arbitrage
+
+**One-sentence summary:** Trade relative mispricings between related stocks using statistical z-scores, staying market-neutral.
+
+**Strategy type:** Statistical Arbitrage (dedicated engine)
+**Default sentiment mode:** ALPHA (use sentiment divergence as an additional spread signal)
+**Supports shorting:** Yes (inherently market-neutral)
+
+**How it works step by step:**
+
+1. The `ZScoreSignal` generator calculates a 60-day rolling z-score for each stock: `z = (current_price - 60_day_mean) / 60_day_std`.
+2. **Pairs mode** (if pairs are configured): For each pair (e.g., KO/PEP), the system calculates a spread z-score. If the spread is too wide (z > 2.0), it shorts the outperformer and buys the underperformer, betting the spread will narrow.
+3. **Individual mode** (no pairs): Each stock is treated independently. Stocks with z > 2.0 are shorted (overbought), stocks with z < -2.0 are bought (oversold).
+4. Z-scores beyond 4.0 are excluded — extreme outliers may be driven by genuine fundamental changes, not statistical deviations.
+5. Position weight scales with z-score magnitude: `weight = min(|z| / 10, max_position_size)`.
+6. Max position size: 5%. Target volatility: 8% (the lowest of any strategy).
+7. **Hysteresis band of 4.0** — stat arb positions shouldn't flip easily.
+8. Max holding period: ~30 days (mean reversion should happen within a month).
+
+**Why sentiment matters here:** In alpha mode, sentiment divergence between paired stocks is treated as an additional spread signal. If KO and PEP historically move together, but KO's sentiment is improving while PEP's is deteriorating, that sentiment divergence amplifies the statistical signal. News sentiment is weighted at 50% (higher than social) because institutional information flow matters more for relative value.
+
+**Uncorrelated signals' role:** Accruals quality is especially relevant. If two stocks in a pair have diverging accruals quality (one has clean cash earnings, the other has aggressive accounting), the "cheap" stock might be cheap because its earnings are lower quality. The earnings revisions signal helps too: if one leg of the pair has upward revisions while the other has downward, the spread may not revert.
+
+**Best for:** Market-neutral investors, quantitative traders who want zero market beta. Requires constant monitoring and can fail when correlations break down.
+
+---
+
+### 4.8 Volatility Premium
+
+**One-sentence summary:** Own the calmest stocks in the market (low volatility), acting as an equity proxy for systematically selling insurance.
+
+**Strategy type:** Volatility Premium (dedicated engine)
+**Default sentiment mode:** FILTER (don't own low-vol stocks during crisis)
+**Supports shorting:** Optional (can short high-vol stocks)
+
+**How it works step by step:**
+
+1. The `RealizedVolatilitySignal` generator calculates 20-day annualised volatility for each stock.
+2. Stocks are ranked by volatility — the **bottom 30%** (lowest volatility) are selected.
+3. Position sizing is **inversely proportional to volatility**: `weight = min(target_vol / stock_vol * 0.1, max_position_size)`. Calmer stocks get larger positions.
+4. Max position size: 5%. Target volatility: 10% (conservative).
+5. If configured, the **top 30% highest-vol** stocks can be shorted (at half the size of long positions).
+6. **Crisis detection**: Before constructing the portfolio, the strategy checks aggregate news sentiment. If average sentiment drops below -50 (extreme fear), the strategy goes entirely to cash — it won't hold low-vol stocks during a genuine crisis because even "safe" stocks sell off in panics. The sentiment filter threshold is -30 for individual stocks.
+7. **Hysteresis band of 6.0** — the widest of any strategy, because vol premium is a slow, low-turnover approach.
+8. Max holding period: ~120 days (1 quarter).
+
+**Why sentiment matters here:** The volatility premium strategy is essentially selling insurance. You earn a steady premium (calm stocks outperform their risk suggests they should), but you face a "tail risk" — occasionally, even safe-looking stocks crash during systemic events. The sentiment filter acts as an early-warning system: when aggregate fear spikes (sentiment < -50), the strategy exits *before* the crash hits. It's like an insurance company stopping underwriting when a hurricane is forming.
+
+**Uncorrelated signals' role:** The VIX regime signal is the most important overlay for this strategy. When VIX is elevated (>30) or the VIX term structure is in backwardation (near-term fear exceeds long-term), the overlay aggressively reduces all vol-premium positions. The credit spread signal reinforces this: widening credit spreads mean the market is repricing risk, and vol sellers should step back.
+
+**Best for:** Defensive, income-oriented investors. Performs well in calm, slowly-rising markets. Vulnerable during sudden crashes if the sentiment filter doesn't trigger in time.
+
+---
