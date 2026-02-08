@@ -26,14 +26,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-# SEC EDGAR full-text search endpoint (no API key required)
-EDGAR_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
-EDGAR_FILINGS_URL = "https://efts.sec.gov/LATEST/search-index"
-# Use the EDGAR company filings API
-EDGAR_COMPANY_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
-# SEC EDGAR full-text search for Form 4
-EDGAR_FULL_TEXT_URL = "https://efts.sec.gov/LATEST/search-index"
-
 # SEC requires a User-Agent header identifying the requester
 SEC_USER_AGENT = "AgentFund Research contact@agentfund.ai"
 
