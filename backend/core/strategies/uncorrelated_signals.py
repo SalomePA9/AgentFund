@@ -335,10 +335,13 @@ class ShortInterestSignal(SignalGenerator):
         symbols: list[str],
         market_data: dict[str, Any],
         short_interest_data: dict[str, Any] | None = None,
+        short_interest_roc: dict[str, float] | None = None,
         **kwargs,
     ) -> list[Signal]:
         if not short_interest_data:
             return []
+
+        roc_data = short_interest_roc or {}
 
         # Collect scores for cross-sectional ranking
         raw_scores: dict[str, float] = {}
@@ -369,7 +372,15 @@ class ShortInterestSignal(SignalGenerator):
             cs_z = (score - mean_score) / std_score if std_score > 0 else 0.0
 
             # Blend absolute score with cross-sectional ranking
-            signal_value = score * 0.7 + cs_z * 15 * 0.3
+            base_signal = score * 0.6 + cs_z * 15 * 0.2
+
+            # Rate-of-change component: decreasing SI = covering = bullish
+            # ROC score is positive when SI is increasing (bearish),
+            # negative when SI is decreasing (bullish/covering)
+            roc_score = roc_data.get(symbol, 0.0)
+            roc_component = -roc_score * 0.2  # Invert: decreasing SI → positive signal
+
+            signal_value = base_signal + roc_component
             signal_value = max(-100, min(100, signal_value))
 
             signals.append(
@@ -383,6 +394,7 @@ class ShortInterestSignal(SignalGenerator):
                         "short_pct_float": data.get("short_pct_float"),
                         "short_ratio": data.get("short_ratio"),
                         "cross_sectional_z": round(cs_z, 4),
+                        "roc_score": round(roc_score, 2),
                         "signal_scope": "stock",
                     },
                 )
