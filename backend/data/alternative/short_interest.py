@@ -183,11 +183,15 @@ def compute_short_interest_roc(
         prev_data = previous_si.get(symbol)
         prev = prev_data.get("short_pct_float") if prev_data else None
 
-        if cur is None or prev is None or prev == 0:
+        if cur is None or prev is None:
             continue
 
         # Rate of change as percentage
-        change_pct = (cur - prev) / prev * 100
+        if prev == 0:
+            # New short initiation: treat as a bearish signal
+            change_pct = 50.0 if cur > 0 else 0.0
+        else:
+            change_pct = (cur - prev) / prev * 100
 
         # Normalise: ±50% change maps to ±100 score
         score = max(-100.0, min(100.0, change_pct * 2.0))
