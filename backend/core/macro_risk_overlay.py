@@ -123,12 +123,13 @@ class MacroRiskOverlay:
         "insider_breadth": 0.10,
     }
 
-    # Minimum number of signals that must be available for the overlay to act
-    MIN_SIGNALS_REQUIRED = 2
+    def __init__(self):
+        """Initialise overlay with config settings."""
+        from config import settings
 
-    # Scale factor bounds
-    MIN_SCALE = 0.25
-    MAX_SCALE = 1.25
+        self.MIN_SIGNALS_REQUIRED = settings.macro_overlay_min_signals
+        self.MIN_SCALE = settings.macro_overlay_min_scale
+        self.MAX_SCALE = settings.macro_overlay_max_scale
 
     def compute(
         self,
