@@ -72,13 +72,15 @@ export default function SettingsPage() {
   };
 
   const handleConnect = async () => {
-    if (!connectForm.apiKey || !connectForm.apiSecret) return;
+    const apiKey = connectForm.apiKey.trim();
+    const apiSecret = connectForm.apiSecret.trim();
+    if (!apiKey || !apiSecret) return;
     setConnecting(true);
     setBrokerError(null);
     try {
       const status = await api.broker.connect(
-        connectForm.apiKey,
-        connectForm.apiSecret,
+        apiKey,
+        apiSecret,
         connectForm.paperMode
       );
       setBrokerStatus(status);
