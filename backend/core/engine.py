@@ -252,7 +252,7 @@ class StrategyEngine:
                 factor_data, sentiment_data, market_data=market_data
             )
 
-            # Step 4: Build sentiment_data dict for strategy framework
+            # Step 4b: Build sentiment_data dict for strategy framework
             # (the strategy framework expects symbol → {combined, news, social, velocity})
             strategy_sentiment = {}
             for sym, si in sentiment_data.items():
