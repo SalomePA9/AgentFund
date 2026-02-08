@@ -544,10 +544,15 @@ class EarningsRevisionsSignal(SignalGenerator):
             if forward_eps_proxy and trailing_eps and trailing_eps > 0:
                 revision = (forward_eps_proxy - trailing_eps) / abs(trailing_eps)
                 revision_data[symbol] = revision
-            elif eps and trailing_eps and trailing_eps > 0:
-                # Fallback: use EPS growth rate as proxy
-                revision = (eps - trailing_eps) / abs(trailing_eps)
-                revision_data[symbol] = revision
+            elif trailing_eps and trailing_eps > 0:
+                # Fallback: use profit margin as an earnings quality proxy.
+                # High margin relative to trailing EPS suggests earnings
+                # sustainability; low margin suggests downward revision risk.
+                margin = data.get("profit_margin")
+                if margin is not None:
+                    # Compare margin to a baseline (10%): above = positive revision
+                    revision = (margin - 0.10) / 0.10
+                    revision_data[symbol] = revision
 
         if not revision_data:
             return []
