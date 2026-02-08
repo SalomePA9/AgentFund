@@ -666,3 +666,315 @@ The result is an `integrated_composite` score that captures not just the quantit
 | **Sentiment** | **25%** | **25%** | **35%** | **20%** |
 
 ---
+
+## 6. Uncorrelated Signals
+
+### 6.1 Why Uncorrelated Signals Matter
+
+Traditional equity strategies rely on signals that are correlated with each other. Momentum, value, and quality are all derived from the same stock prices and financial statements. Retail sentiment (StockTwits, news) tends to follow price action — people feel good about stocks that are going up.
+
+The problem: when these correlated signals all fail at the same time (a market regime change), every strategy suffers simultaneously. The 2008 "quant quake" and the 2020 COVID crash both saw momentum, value, and quality factors crash together.
+
+**Uncorrelated signals** come from entirely different data sources:
+
+- **Credit markets** (bond spreads) measure risk appetite among institutional fixed-income investors
+- **Volatility markets** (VIX, options) capture how much people are willing to pay for insurance
+- **Insider transactions** (SEC filings) reflect what people with private company knowledge are doing with their own money
+- **Short interest** captures what sophisticated institutional short-sellers think
+- **Calendar patterns** are purely time-based and mathematically independent of everything else
+
+Because these signals are structurally different from equity factor signals, they provide information that the existing system was blind to. They don't replace the existing signals — they add a new dimension of context.
+
+### 6.2 Cross-Asset Macro Signals
+
+These are **global signals** that affect ALL stocks equally. They don't tell you which stock to buy — they tell you whether it's safe to buy *anything*.
+
+#### Credit Spread Signal
+
+**Data source:** FRED API — BofA High-Yield Option-Adjusted Spread (series: `BAMLH0A0HYM2`)
+
+**What it is:** The difference in yield between risky corporate bonds and safe government bonds. When investors demand a bigger premium to hold risky debt, it means they're worried about default risk — and that worry usually spreads to equities.
+
+**How the signal works:**
+1. Fetch the current high-yield spread and its history
+2. Calculate a **z-score**: how many standard deviations the current spread is from its historical mean
+3. Calculate **rate of change**: is the spread widening (bad) or tightening (good)?
+4. Signal formula: `signal = -z_score * 30 - rate_of_change * 5`
+5. The signal is **inverted** because high spreads = bearish: a z-score of +2 (spreads well above average) produces a signal of -60 (strong sell)
+
+**Confidence:** Based on z-score magnitude. A z-score of 2.0 → confidence 1.0, z-score of 0.5 → confidence 0.25.
+
+**Why it matters in simple terms:** Credit markets are often called "the smart money." Bond investors tend to be institutional, analytical, and risk-aware. When they start demanding higher yields to hold corporate debt, they're telling you something that equity investors haven't figured out yet. Research by Friewald, Wagner & Zechner (2014) shows that credit spreads lead equity market moves by 2-6 weeks.
+
+**Real-world example:** In June 2007, high-yield spreads started widening months before the equity market peaked in October 2007. Any system watching credit spreads would have been reducing equity exposure while the S&P 500 was still making new highs.
+
+#### Yield Curve Signal
+
+**Data source:** FRED API — 10-Year minus 2-Year Treasury Spread (series: `T10Y2Y`)
+
+**What it is:** The difference between the 10-year and 2-year US Treasury yields. Normally, longer-term bonds pay higher yields than shorter ones (a "normal" upward-sloping curve). When this inverts (2-year yields exceed 10-year), it has preceded every US recession since 1955.
+
+**How the signal works:**
+1. Fetch the current 10Y-2Y spread
+2. Positive spread = normal curve = bullish (growth expectations healthy)
+3. Negative spread = inverted curve = bearish (recession risk)
+4. Signal formula: `signal = spread * 50 + rate_of_change * 20`
+5. A spread of +2.0% → signal of +100 (maximum bullish). A spread of -0.5% → signal of -25 (moderately bearish).
+
+**Why it matters in simple terms:** The yield curve captures the economy's "metabolism." When investors expect growth, they demand higher yields for tying up money longer (normal curve). When they expect a downturn, they rush into long-term bonds for safety, driving long yields below short yields (inversion). An inverted curve doesn't just predict recessions — it often *causes* them by making bank lending unprofitable.
+
+**Important nuance:** A *rapidly flattening* curve (rate of change is negative) is more ominous than a *stably inverted* one. Once the curve has been inverted for a while, markets have already priced in the recession risk. That's why rate of change gets a 20-point weight.
+
+#### Volatility Regime Signal
+
+**Data source:** Yahoo Finance — VIX (^VIX) and VIX 3-Month (^VIX3M) indices, plus SPY for realised volatility
+
+**What it is:** A composite reading of three volatility dimensions:
+1. **VIX level**: How much options traders are paying for S&P 500 protection
+2. **VIX term structure**: Whether short-term fear exceeds long-term fear (backwardation)
+3. **Implied-Realised spread**: Whether options are pricing more volatility than is actually occurring
+
+**How the signal works:**
+1. Calculate the **VIX component**: `(20 - vix) / 20`, mapping VIX 20 → neutral, VIX 10 → +0.5, VIX 40 → -1.0
+2. Calculate the **term structure component**: `(VIX3M - VIX) / VIX`. Positive = contango (normal, calm). Negative = backwardation (panic).
+3. Combine: `regime_score = 0.6 * vix_component + 0.4 * ts_component`
+4. Convert to signal: `signal = regime_score * 100`
+5. Amplify extremes: VIX > 35 → floor signal at -80. VIX < 12 → floor signal at +60.
+
+**Regime classification:**
+- **Calm** (VIX < 20): Green light for risk-taking
+- **Elevated** (VIX 20-30): Proceed with caution
+- **Crisis** (VIX > 30 or term structure in backwardation): Reduce exposure
+
+**Why it matters in simple terms:** The VIX is the market's "fear gauge." But the VIX level alone isn't enough — what matters is the *shape* of the volatility curve. In normal markets, longer-term volatility expectations are higher than short-term (contango). When the curve inverts (backwardation), it means traders are more scared of *right now* than of the future — classic panic behaviour. This combination of VIX level + term structure correctly identified every major equity drawdown since 2008.
+
+### 6.3 Alternative Data Signals
+
+These are **stock-specific signals** that provide insight about individual companies from non-traditional data sources.
+
+#### Insider Transaction Signal
+
+**Data source:** SEC EDGAR — Form 4 filings (free, no API key required)
+
+**What it is:** Tracks when company insiders (CEOs, CFOs, directors, 10%+ shareholders) buy or sell their own company's stock. By law, they must report these transactions to the SEC within 2 business days.
+
+**How the signal works:**
+1. Fetch recent Form 4 filings from SEC EDGAR for each stock
+2. Count buys vs. sells: `buy_ratio = buy_count / total_filing_count`
+3. Calculate a **cluster score**: normalised filing count over the period. Many filings in a short window = coordinated insider activity.
+4. Calculate **net sentiment**: `(buy_ratio - 0.5) * 200` → maps to -100 (all sells) to +100 (all buys)
+5. Blend with cluster confidence: `signal = net_sentiment * (0.5 + 0.5 * cluster_confidence)`
+6. Signal confidence scales with cluster strength: isolated single filings have low confidence; multiple insiders buying in the same week have high confidence.
+
+**Why it matters in simple terms:** Insider buying is one of the most studied signals in finance. Meta-analyses by Jeng, Metrick & Zeckhauser (2003) show that stocks with insider buying outperform by 7-10% annually. The key insight is that insiders buy for only one reason: they believe the stock will go up. They sell for many reasons (diversification, taxes, estate planning), so selling is less informative.
+
+**Cluster buying** — when multiple insiders buy in a short window — is an even stronger signal. If the CEO, CFO, and two directors all buy within the same week, they collectively know something about the company's prospects that the market doesn't.
+
+**Structural uncorrelation:** Insiders often buy *against* the price trend. They buy when the stock has been beaten down (low momentum) because they know the fundamentals are better than the price reflects. This makes insider buying negatively correlated with momentum — the perfect diversifier.
+
+#### Short Interest Signal
+
+**Data source:** Yahoo Finance — shortPercentOfFloat, sharesShort, shortRatio
+
+**What it is:** The percentage of a stock's tradable shares that have been borrowed and sold short by institutional investors. High short interest means professional investors are betting the stock will decline.
+
+**How the signal works:**
+1. Fetch short interest metrics for each stock
+2. Score by severity:
+   - < 2% short float: Normal, score 0 (neutral)
+   - 2-5%: Elevated, score -20 to -40
+   - 5-10%: High, score -40 to -70
+   - > 10%: Extreme, score -70 to -100
+3. Cross-sectional ranking: compare each stock's short interest to the universe average
+4. Final signal: `70% absolute score + 30% cross-sectional z-score * 15`
+5. Fixed confidence of 0.7 (short interest data is only reported bi-weekly)
+
+**Why it matters in simple terms:** Short sellers are typically sophisticated institutional investors (hedge funds, prop desks) who do extensive research before shorting. When short interest is very high, it means these informed investors have collectively decided the stock is overvalued or heading for trouble. This is information that retail investors and even many long-only institutions don't have.
+
+**Two-edged sword:** Very high short interest (>20% of float) can also set up "short squeezes" where rising prices force short sellers to buy back shares, creating a self-reinforcing rally. The system accounts for this by limiting the maximum bearish signal at -100 and letting the momentum/sentiment signals provide the squeeze context.
+
+#### Seasonality Signal
+
+**Data source:** Built-in calendar data (no external API needed)
+
+**What it is:** A signal based on well-documented calendar patterns in equity returns. Certain months, and certain periods within months, have historically and persistently shown above- or below-average returns.
+
+**Monthly bias table (historical S&P 500 averages, 1950-2024):**
+
+| Month | Bias | Note |
+|-------|------|------|
+| January | +1.2% | "January effect" — especially strong for small caps |
+| February | -0.2% | Weak |
+| March | +1.0% | Moderate |
+| April | +1.5% | One of the strongest months |
+| May | -0.1% | "Sell in May" — start of weak period |
+| June | -0.2% | Weak |
+| July | +0.8% | Mid-summer bounce |
+| August | -0.5% | Often volatile |
+| September | -1.0% | **Worst month** historically |
+| October | +0.5% | Turnaround, but often volatile |
+| November | +1.5% | One of the strongest months |
+| December | +1.3% | "Santa Claus rally" |
+
+**How the signal works:**
+1. Look up the current month's historical bias
+2. Scale to signal range: `base_signal = monthly_bias / 0.015 * 60` (max ±60 from monthly)
+3. Add **end-of-month boost** (+15) in the last 3 trading days (window dressing by fund managers)
+4. Add **end-of-quarter boost** (+10) at the end of March, June, September, December
+5. Signal is capped at [-100, +100]
+6. Confidence is low: 0.3 (seasonality is weak but consistent)
+
+**Why it matters in simple terms:** Seasonality is the purest form of diversification for a signal system. It's based on calendar dates, which have zero correlation with stock prices, sentiment, fundamentals, or any other signal. While weak on its own, it provides a small but reliable baseline signal that slightly tilts the system toward historically favourable periods. Most importantly, it's *always available* — even when API data is missing, the calendar always works.
+
+### 6.4 Fundamental Regime Signals
+
+These are **stock-specific signals** that capture aspects of company fundamentals that traditional factor scores miss.
+
+#### Earnings Revisions Signal
+
+**Data source:** Yahoo Finance — forward EPS estimates, trailing EPS
+
+**What it is:** Measures whether analysts are revising their earnings estimates upward or downward. Rising estimates predict outperformance; falling estimates predict underperformance.
+
+**How the signal works:**
+1. For each stock, compare forward EPS to trailing EPS: `revision = (forward_eps - trailing_eps) / |trailing_eps|`
+2. Rank all stocks cross-sectionally by revision magnitude
+3. Compute z-score relative to the universe
+4. Signal: `z_score * 30`, clamped to [-100, +100]
+5. Confidence: 0.5 (this is a proxy using available data rather than direct revision data)
+
+**Why it matters in simple terms:** Earnings revisions capture **forward-looking** information that backward-looking factors miss. A stock can have terrible trailing momentum (price has been falling) but positive earnings revisions (analysts are raising estimates). This divergence often precedes a price recovery. Chan, Jegadeesh & Lakonishok (1996) showed that earnings momentum is one of the most powerful predictors of stock returns.
+
+**Structural uncorrelation with price momentum:** Price momentum looks at *past* returns. Earnings revisions look at *future* expectations. A stock can have negative momentum but positive revisions (analysts see improvement), or positive momentum but negative revisions (the rally is running out of fundamental support). This makes the two signals complementary rather than redundant.
+
+#### Accruals Quality Signal
+
+**Data it is based on:** Profit margin, ROE, debt-to-equity from Yahoo Finance
+
+**What it is:** A proxy for the "accruals anomaly" discovered by Sloan (1996). When a company's reported earnings significantly exceed its operating cash flow (high accruals), the earnings are lower quality and future returns tend to be poor. Low accruals (cash earnings match reported earnings) indicate high-quality earnings.
+
+**How the signal works:**
+1. Compute an earnings quality proxy: `quality = profit_margin / |ROE|` — measures how efficiently reported earnings translate to margins
+2. Apply a debt penalty: if debt_to_equity > 1.0, subtract `min(0.3, (D/E - 1.0) * 0.1)` — high leverage amplifies accruals risk
+3. Negative profit margins get a fixed penalty of -0.5
+4. Rank all stocks cross-sectionally by this quality proxy
+5. Signal: `z_score * 25`, clamped to [-100, +100]
+6. Confidence: 0.4 (lower confidence because this is a rough proxy)
+
+**Why it matters in simple terms:** Some companies "manage" their earnings through accounting choices — recognising revenue early, deferring expenses, capitalising costs. These practices inflate reported earnings above what the business is actually generating in cash. The accruals anomaly shows that stocks with high accruals (big gap between reported and cash earnings) tend to underperform over the following year as the accounting tricks catch up with reality.
+
+**Structural uncorrelation:** The accruals signal is uncorrelated with both momentum (past price performance says nothing about accounting quality) and value (a cheap stock can have either good or bad earnings quality). It adds a dimension that neither factor captures: the *reliability* of the financial numbers that value and quality scores are built on.
+
+---
+
+## 7. The Macro Risk Overlay
+
+The Macro Risk Overlay is the "master fuse box" that sits above all agents and all strategies. It doesn't decide *what* to buy or sell — it decides *how much* to buy or sell. When multiple uncorrelated signals agree that risk is elevated, it scales down every agent's position sizes. When signals confirm safety, it allows slightly larger positions.
+
+### How It Works
+
+```
+All Macro Data Sources
+        │
+        ▼
+┌─────────────────────────────────────────┐
+│         Build Signal Snapshot            │
+│  credit_spread  ✓  signal: -45           │
+│  vol_regime     ✓  signal: -30           │
+│  yield_curve    ✓  signal: +10           │
+│  seasonality    ✓  signal: +48 (April)   │
+│  insider_bread  ✓  signal: +20           │
+└──────────────────┬──────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────┐
+│     Compute Weighted Composite           │
+│  (re-normalise weights for available     │
+│   signals; missing signals excluded)     │
+│                                          │
+│  credit:   -45 * 0.30 = -13.50          │
+│  vol:      -30 * 0.30 =  -9.00          │
+│  yield:    +10 * 0.20 =  +2.00          │
+│  season:   +48 * 0.10 =  +4.80          │
+│  insider:  +20 * 0.10 =  +2.00          │
+│  ─────────────────────────               │
+│  composite = -13.70                      │
+└──────────────────┬──────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────┐
+│     Convert to Risk Scale Factor         │
+│                                          │
+│  composite = -13.70                      │
+│  → bearish regime                        │
+│  → scale = 1.0 + (-13.70/100) * 0.75    │
+│  → scale = 0.8972                        │
+│                                          │
+│  All positions reduced by ~10%           │
+└─────────────────────────────────────────┘
+```
+
+### Signal Weights
+
+| Signal | Weight | Rationale |
+|--------|--------|-----------|
+| **Credit Spread** | 30% | Most reliable leading indicator of equity risk |
+| **Volatility Regime** | 30% | Real-time measure of fear and panic |
+| **Yield Curve** | 20% | Longer-term recession predictor |
+| **Seasonality** | 10% | Weak but always available |
+| **Insider Breadth** | 10% | Aggregate insider conviction across market |
+
+### The Asymmetric Scale
+
+The risk scale factor is deliberately **asymmetric** — it cuts risk more aggressively than it adds risk:
+
+```
+Composite: -100  -75  -50  -25   0   +25  +50  +75  +100
+Scale:      0.25 0.44 0.63 0.81  1.0  1.06 1.13 1.19 1.25
+```
+
+- At composite -100 (maximum danger): positions reduced by **75%** (scale 0.25)
+- At composite +100 (maximum safety): positions increased by only **25%** (scale 1.25)
+
+**Why asymmetric?** Because losses are mathematically asymmetric. A 50% loss requires a 100% gain to recover. Cutting risk aggressively when danger signals appear protects more capital than the small upside cost of being slightly too conservative in good times.
+
+### Minimum Signal Requirement
+
+The overlay requires at least **2 of 5 signals** to be available before it acts. If only one signal (or none) is available, the overlay returns a neutral scale of 1.0 (no adjustment). This prevents a single noisy data source from triggering portfolio-wide changes.
+
+Since the seasonality signal is always available (it's calendar-based), the overlay really just needs one additional data source to activate.
+
+### Regime Labels
+
+Based on the composite score, the overlay assigns a human-readable regime label:
+
+| Composite Score | Label | What it means |
+|----------------|-------|---------------|
+| < -40 | `high_risk` | Multiple signals confirm danger — maximum risk reduction |
+| -40 to -15 | `elevated_risk` | Some concern — moderate risk reduction |
+| -15 to +30 | `normal` | Business as usual — no adjustment |
+| > +30 | `low_risk` | All signals confirm safety — slight risk increase |
+
+### Warning System
+
+The overlay generates human-readable warnings for extreme conditions:
+
+- Credit spread signal < -50: *"Credit spreads widening significantly — credit markets pricing risk"*
+- Vol regime signal < -50: *"Elevated volatility regime — VIX elevated or term structure inverted"*
+- Yield curve signal < -30: *"Yield curve flat or inverted — recession risk elevated"*
+- Composite < -60: *"CRITICAL: Multiple macro signals confirm high risk — position sizes reduced to minimum"*
+- Composite > +40: *"Macro conditions favourable — all signals confirm low risk environment"*
+
+### Graceful Degradation
+
+Every data source can fail — the FRED API can go down, Yahoo Finance can throttle requests, SEC EDGAR can be slow. The overlay handles this gracefully:
+
+1. Each signal has an `available` flag. If data fetching fails, the signal is marked unavailable.
+2. Only available signals are included in the composite calculation.
+3. Weights are **re-normalised** among available signals so they still sum to 1.0.
+4. If fewer than 2 signals are available, the overlay returns neutral (1.0).
+5. Seasonality is always available as a fallback (it's purely calendar-based).
+
+This means the system never goes blind — even if all external APIs fail, it has at least one signal (seasonality) and returns a mild directional tilt based on the current month.
+
+---
