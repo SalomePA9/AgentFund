@@ -531,8 +531,8 @@ class EarningsRevisionsSignal(SignalGenerator):
             if not pe_ratio or not price or pe_ratio <= 0:
                 continue
 
-            # Trailing EPS from trailing P/E
-            trailing_eps = price / pe_ratio if pe_ratio > 0 else None
+            # Trailing EPS from trailing P/E (pe_ratio > 0 guaranteed by guard above)
+            trailing_eps = price / pe_ratio
 
             # Forward EPS proxy: if the stock has a lower forward P/E,
             # analysts expect higher earnings.  We approximate this from
