@@ -139,7 +139,7 @@ class VolatilityRegimeClient:
         # Regime classification
         if vix_current >= 30 or term_structure < -0.05:
             regime_label = "crisis"
-        elif vix_current >= 20 or term_structure < 0.0:
+        elif vix_current >= 20 or term_structure < -0.02:
             regime_label = "elevated"
         else:
             regime_label = "calm"
