@@ -436,3 +436,233 @@ The sentiment velocity signal (weighted at 40% — the highest of any strategy) 
 **Best for:** Defensive, income-oriented investors. Performs well in calm, slowly-rising markets. Vulnerable during sudden crashes if the sentiment filter doesn't trigger in time.
 
 ---
+
+## 5. Sentiment Integration
+
+Sentiment is not a simple "positive = buy, negative = sell" overlay. AgentFund uses a sophisticated multi-layer integration system that combines sentiment with quantitative factors in nuanced ways.
+
+### 5.1 Sentiment Data Sources
+
+AgentFund collects sentiment from two primary sources:
+
+**FinBERT (News Sentiment)**
+- Uses the `ProsusAI/finbert` model, a BERT model fine-tuned specifically on financial text
+- Analyses news headlines and articles for each stock
+- Produces a score from -100 (very negative) to +100 (very positive)
+- More weight given to institutional-quality sources
+
+**StockTwits (Social Sentiment)**
+- Pulls real-time posts from the StockTwits public API
+- Captures retail investor sentiment — what individual traders are saying and feeling
+- Score from -100 to +100
+- Includes mention volume (how much people are talking about a stock)
+
+**Derived Signals:**
+- **Combined Sentiment**: Weighted average of news and social — typically 40% news + 30% social + 30% velocity
+- **Sentiment Velocity**: How fast sentiment is changing (the "acceleration" of mood). Calculated as the rate of change over the past 7 days. A stock whose sentiment went from 0 to +40 in a week has high positive velocity.
+
+### 5.2 The Five Sentiment Modes
+
+Each strategy is configured with one of five modes that determine how sentiment interacts with strategy signals. These modes are defined in the `SentimentConfig` but are applied through the pre-execution integrator rather than at the strategy level.
+
+#### DISABLED
+Sentiment is ignored entirely. The strategy relies purely on quantitative factor scores.
+
+#### FILTER
+Sentiment acts as a **gate**. Signals that disagree with sentiment are blocked:
+- Bullish signal + negative sentiment = signal **dropped** (don't buy into negativity)
+- Bearish signal + positive sentiment = signal **dropped** (don't short into positivity)
+
+Think of it as: "I'll only trade when sentiment *agrees* with my quantitative signal." This is the most conservative use of sentiment.
+
+**Used by:** Momentum, Dividend Growth, Volatility Premium
+
+#### ALPHA
+Sentiment is used as an **additional ranking factor**. It doesn't block signals but adjusts their scores:
+- Signal value is modified: `new_value = original * (1 - alpha_weight) + sentiment * alpha_weight`
+- Typical alpha weight: 15-20% of the total signal
+
+Think of it as: "Sentiment is one more factor in my multi-factor model, alongside momentum, value, and quality."
+
+**Used by:** Quality Momentum (15% weight), Statistical Arbitrage (20% weight)
+
+#### RISK_ADJUSTMENT
+Sentiment adjusts **position sizing** through confidence:
+- Signal direction matches sentiment → confidence boosted by 20%
+- Signal direction conflicts with sentiment → confidence reduced by 20%
+- Higher confidence → larger position; lower confidence → smaller position
+
+Think of it as: "I'll still trade, but I'll size positions smaller when sentiment disagrees with me."
+
+**Used by:** Trend Following
+
+#### CONFIRMATION
+Sentiment must **confirm** the signal for full conviction:
+- Bullish signal + negative sentiment → confidence cut to 50%
+- Bearish signal + positive sentiment → confidence cut to 50%
+- Aligned signal + sentiment → full confidence maintained
+
+Think of it as: "I need sentiment to back up my signal, or I'll only put half the money on."
+
+**Used by:** Quality Value, Short-Term Reversal
+
+### 5.3 The Seven Integration Layers
+
+The `SentimentFactorIntegrator` is the engine that blends sentiment into factor scores *before* strategies run. It applies seven proprietary techniques in sequence. Here's how each one works:
+
+#### Layer 1: Convergence Amplification (bonus: -15 to +15 points)
+
+**What it does:** Rewards stocks where factor direction and sentiment direction agree, penalises disagreement.
+
+**How it works:**
+1. Compute a strategy-weighted factor direction. For a momentum strategy, this is mostly the momentum score. For a quality-value strategy, it's the average of value and quality scores.
+2. Convert both factor direction and sentiment direction to a [-1, +1] scale.
+3. Multiply them together: `agreement = factor_direction * sentiment_direction`
+4. Scale to [-15, +15] and add to the composite score.
+
+**Example:** A stock with momentum score 80 (factor direction = +0.6) and combined sentiment +60 (sentiment direction = +0.6) gets a convergence bonus of `0.6 * 0.6 * 15 = +5.4 points`. A stock with momentum 80 but sentiment -60 gets a penalty of `-5.4 points`.
+
+**Why it matters:** When quantitative factors and human sentiment agree, the signal is more reliable. Disagreement suggests one side is wrong, warranting caution.
+
+#### Layer 2: Velocity-Momentum Resonance (multiplier: 0.8x to 1.2x)
+
+**What it does:** When sentiment velocity (acceleration) aligns with price momentum, the momentum score is amplified. When they diverge, it's dampened.
+
+**How it works:**
+1. Check momentum direction: score > 50 = bullish, < 50 = bearish
+2. Normalise sentiment velocity to [-1, +1] (typical range is about -10 to +10 points per day)
+3. If momentum is bullish and velocity is positive (sentiment improving): momentum is multiplied by up to 1.2x
+4. If momentum is bullish but velocity is negative (sentiment deteriorating): momentum is multiplied by as little as 0.8x
+
+**Example:** A stock with momentum score 75 and positive sentiment velocity gets its momentum boosted to `75 * 1.15 = 86.25`. The same stock with negative velocity would see momentum dampened to `75 * 0.85 = 63.75`.
+
+**Why it matters:** Momentum is most reliable when market participants are *increasingly* optimistic (or pessimistic). Decelerating sentiment in a momentum stock is an early warning that the trend may be exhausting.
+
+#### Layer 3: Cross-Source Triangulation (confidence: 0.5 to 1.0)
+
+**What it does:** Measures agreement between news and social sentiment to determine overall confidence.
+
+**How it works:**
+1. If news and social sentiment have the **same sign** (both positive or both negative):
+   - Confidence ranges from 0.7 to 1.0, depending on how close their magnitudes are
+   - News +40, Social +35 → high confidence (close agreement)
+   - News +80, Social +10 → moderate confidence (same direction but different intensity)
+2. If they have **opposite signs** (news positive, social negative or vice versa):
+   - Confidence drops to 0.5 to 0.7 (significant disagreement)
+   - The larger the gap, the lower the confidence
+3. If one source is missing: confidence defaults to 0.75
+
+**Why it matters:** When institutional analysis (news) and retail crowd wisdom (social) agree, the sentiment signal is more trustworthy. Disagreement may mean the crowd is wrong (retail mania), or the institutions are wrong (lagging narrative), or both — in any case, certainty is lower.
+
+#### Layer 4: Sentiment Dispersion Risk (risk: 0.0 to 1.0)
+
+**What it does:** Quantifies the uncertainty when news and social sentiment diverge significantly.
+
+**How it works:**
+- `spread = |news_sentiment - social_sentiment|` (range: 0 to 200)
+- Dispersion risk = `1 - 1 / (1 + (spread / 60)^1.5)` — a sigmoid that is near 0 when spread is small and approaches 1.0 when spread exceeds 100
+- The composite score is then scaled: `composite *= triangulation_confidence * (1 - 0.3 * dispersion_risk)`
+
+**Example:** News +70, Social -30 → spread = 100 → dispersion risk = ~0.72. The composite score is pulled 22% toward the mean (50), reducing the strength of any directional bet.
+
+**Why it matters:** High dispersion means the market hasn't reached consensus. Trading on ambiguous information is risky, so positions should be smaller.
+
+#### Layer 5: Regime-Aware Factor Tilting (weight adjustments)
+
+**What it does:** Detects whether the overall market is in a "risk-on" or "risk-off" regime and shifts factor weights accordingly.
+
+**How it works:**
+1. Calculate aggregate sentiment across all stocks: `avg_sentiment = mean of all combined_sentiment scores`
+2. Calculate breadth: what fraction of stocks have positive sentiment
+3. Compute regime strength using `tanh(avg_sentiment / 25)` blended with breadth → continuous value from -1.0 (strong risk-off) to +1.0 (strong risk-on)
+4. Apply proportional weight tilts:
+
+| Factor | Risk-On Tilt | Risk-Off Tilt |
+|--------|-------------|---------------|
+| Momentum | +8% | -8% |
+| Value | -4% | +4% |
+| Quality | -4% | +6% |
+| Dividend | -2% | +4% |
+| Volatility | -4% | +4% |
+| Sentiment | +6% | -10% |
+
+The tilt is applied proportionally to regime strength. A regime strength of +0.5 applies 50% of the risk-on tilt. Weights are renormalised to sum to 1.0 after tilting.
+
+**Example:** In a risk-on regime (strength +0.7), a momentum strategy would see its momentum weight increase from 55% to ~60.6% while its sentiment weight increases from 25% to ~29.2%. In a risk-off regime, quality and value weights would increase at the expense of momentum and sentiment.
+
+**Why it matters:** Different factors perform better in different market environments. Momentum thrives in risk-on rallies but crashes in risk-off panics. Quality and value provide protection during downturns. By dynamically tilting weights, the system adapts to the current environment instead of running a static model.
+
+#### Layer 6: Temporal Persistence (bonus: -10 to +10 points)
+
+**What it does:** Rewards sustained, multi-day sentiment and penalises noisy single-day spikes.
+
+**How it works:**
+1. **Streak count**: Consecutive days of same-sign sentiment. A 10-day bullish streak is more meaningful than a 1-day blip.
+2. **Persistence**: How stable sentiment has been (low variance = high persistence, range 0-1)
+3. **Trend slope**: Linear regression slope of sentiment over the lookback window
+4. **Breakout detection**: If recent sentiment differs from prior baseline by >30 points AND crosses zero, it's flagged as a regime change
+
+The temporal bonus is computed as:
+```
+streak_component = sign(streak) * log(1 + |streak|) * 2.0
+persistence_multiplier = 0.4 + 0.9 * persistence
+slope_component = clamp(trend_slope * 0.5, -2, +2)
+breakout_bonus = ±2.0 if breakout detected
+
+bonus = (streak_component * persistence_multiplier) + slope_component + breakout_bonus
+clamped to [-10, +10]
+```
+
+**Example:** A stock with a 10-day bullish streak (component = +4.6), high persistence 0.8 (multiplier = 1.12), rising trend slope +3 (component = +1.5), and no breakout: `bonus = (4.6 * 1.12) + 1.5 = +6.65 points`.
+
+**Why it matters:** A single-day sentiment spike might be a reaction to a news event that is quickly forgotten. But if sentiment stays elevated for 5-10 consecutive days, the market has formed a genuine consensus. This layer separates signal from noise.
+
+#### Layer 7: MA-Sentiment Confluence (bonus: -12 to +12 points)
+
+**What it does:** Generates a strong signal when price position relative to the 200-day moving average aligns with sustained sentiment direction.
+
+**How it works:**
+1. Check if price is above or below the 200-day MA
+2. Check the sentiment streak direction (multi-day bullish or bearish)
+3. If both agree (price above MA + bullish streak, or price below MA + bearish streak):
+   - Bonus scales with both streak length and MA distance
+   - `bonus = 12.0 * min(|streak| / 10, 1.0) * min(|ma_deviation| / 0.10, 1.0)`
+   - Maximum ±12 points
+4. If they **diverge** (price above MA but bearish sentiment, or vice versa):
+   - Mild penalty: `-3.0 * min(|streak| / 10, 1.0)`
+
+**Example:** AAPL is 7% above its MA200, with a 7-day bullish sentiment streak: `bonus = 12.0 * (7/10) * (0.07/0.10) = +5.88 points`. If AAPL were 7% above MA200 but had a 7-day bearish streak: `penalty = -3.0 * (7/10) = -2.1 points`.
+
+**Why it matters:** The 200-day MA is the most-watched technical level in the market. When a stock is above its MA200 AND sentiment has been positive for multiple days, there is genuine institutional and retail conviction behind the trend. This confluence is one of the strongest predictive patterns in equity markets.
+
+### How the Seven Layers Combine
+
+The final integrated composite score for each stock is computed as:
+
+```
+1. Start with strategy-weighted factor scores (0-100 scale)
+2. Apply regime-tilted weights (Layer 5)
+3. Multiply momentum by resonance multiplier (Layer 2)
+4. Add sentiment as a weighted factor
+5. Compute weighted average → base composite
+6. Add convergence bonus (Layer 1)
+7. Add temporal persistence bonus (Layer 6)
+8. Add MA-sentiment confluence bonus (Layer 7)
+9. Scale by triangulation confidence * (1 - 0.3 * dispersion risk) (Layers 3 & 4)
+10. Center around 50, clamp to [0, 100]
+```
+
+The result is an `integrated_composite` score that captures not just the quantitative fundamentals of a stock, but the market's collective sentiment about it, how strongly different sentiment sources agree, how persistent that sentiment has been, and whether the current market regime favours or disfavours the stock's factor profile.
+
+### Default Factor Weights by Strategy (with sentiment)
+
+| Factor | Momentum | Quality Value | Quality Momentum | Dividend Growth |
+|--------|----------|---------------|-------------------|-----------------|
+| Momentum | 55% | 0% | 30% | 0% |
+| Value | 0% | 30% | 0% | 15% |
+| Quality | 10% | 30% | 25% | 25% |
+| Dividend | 0% | 5% | 0% | 25% |
+| Volatility | 10% | 10% | 10% | 15% |
+| **Sentiment** | **25%** | **25%** | **35%** | **20%** |
+
+---
