@@ -123,7 +123,9 @@ class ShortInterestClient:
                 elif short_pct < 10.0:
                     score = -40 - (short_pct - 5.0) / 5.0 * 30  # -40 to -70
                 else:
-                    score = -70 - min(30.0, (short_pct - 10.0) / 10.0 * 30)  # -70 to -100
+                    score = -70 - min(
+                        30.0, (short_pct - 10.0) / 10.0 * 30
+                    )  # -70 to -100
                 score = max(-100.0, min(0.0, score))
 
             return {

@@ -842,21 +842,32 @@ async def _fetch_macro_overlay_data(
                 macro_data[name] = {
                     "current": float(row["value"]) if row.get("value") else None,
                     "z_score": float(row["z_score"]) if row.get("z_score") else 0.0,
-                    "percentile": float(row["percentile"]) if row.get("percentile") else 50.0,
-                    "rate_of_change": float(row["rate_of_change"]) if row.get("rate_of_change") else 0.0,
+                    "percentile": (
+                        float(row["percentile"]) if row.get("percentile") else 50.0
+                    ),
+                    "rate_of_change": (
+                        float(row["rate_of_change"])
+                        if row.get("rate_of_change")
+                        else 0.0
+                    ),
                 }
         logger.info("Loaded %d macro indicators from DB", len(macro_data))
     except Exception:
-        logger.warning("Failed to fetch macro indicators — overlay will be partial", exc_info=True)
+        logger.warning(
+            "Failed to fetch macro indicators — overlay will be partial", exc_info=True
+        )
 
     # Fetch VIX data (fast, always fresh)
     try:
         from data.macro.volatility_regime import VolatilityRegimeClient
+
         vol_client = VolatilityRegimeClient()
         vol_regime_data = await vol_client.fetch_regime(lookback_days=60)
-        logger.info("VIX regime: %s (score=%.2f)",
-                     vol_regime_data.get("regime_label"),
-                     vol_regime_data.get("regime_score", 0))
+        logger.info(
+            "VIX regime: %s (score=%.2f)",
+            vol_regime_data.get("regime_label"),
+            vol_regime_data.get("regime_score", 0),
+        )
     except Exception:
         logger.warning("Failed to fetch VIX data", exc_info=True)
 
@@ -875,9 +886,15 @@ async def _fetch_macro_overlay_data(
             if sym and sym not in seen:
                 seen.add(sym)
                 insider_data[sym] = {
-                    "net_sentiment": float(row["net_sentiment"]) if row.get("net_sentiment") else 0,
-                    "cluster_score": float(row["cluster_score"]) if row.get("cluster_score") else 0,
-                    "buy_ratio": float(row["buy_ratio"]) if row.get("buy_ratio") else 0.5,
+                    "net_sentiment": (
+                        float(row["net_sentiment"]) if row.get("net_sentiment") else 0
+                    ),
+                    "cluster_score": (
+                        float(row["cluster_score"]) if row.get("cluster_score") else 0
+                    ),
+                    "buy_ratio": (
+                        float(row["buy_ratio"]) if row.get("buy_ratio") else 0.5
+                    ),
                     "filing_count": row.get("filing_count", 0),
                 }
         logger.info("Loaded insider signals for %d symbols", len(insider_data))
@@ -899,9 +916,19 @@ async def _fetch_macro_overlay_data(
             if sym and sym not in seen:
                 seen.add(sym)
                 short_interest_data[sym] = {
-                    "short_pct_float": float(row["short_pct_float"]) if row.get("short_pct_float") else None,
-                    "short_ratio": float(row["short_ratio"]) if row.get("short_ratio") else None,
-                    "short_interest_score": float(row["short_interest_score"]) if row.get("short_interest_score") else 0,
+                    "short_pct_float": (
+                        float(row["short_pct_float"])
+                        if row.get("short_pct_float")
+                        else None
+                    ),
+                    "short_ratio": (
+                        float(row["short_ratio"]) if row.get("short_ratio") else None
+                    ),
+                    "short_interest_score": (
+                        float(row["short_interest_score"])
+                        if row.get("short_interest_score")
+                        else 0
+                    ),
                 }
         logger.info("Loaded short interest for %d symbols", len(short_interest_data))
     except Exception:

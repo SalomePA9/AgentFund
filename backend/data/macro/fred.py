@@ -63,9 +63,7 @@ class FredClient:
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
 
-    async def fetch_all(
-        self, lookback_days: int = 90
-    ) -> dict[str, dict[str, Any]]:
+    async def fetch_all(self, lookback_days: int = 90) -> dict[str, dict[str, Any]]:
         """Fetch all macro series and return processed data."""
         if not self.api_key:
             logger.warning("No FRED API key configured — skipping macro data")
@@ -86,7 +84,9 @@ class FredClient:
                 if raw:
                     results[name] = self._process_series(raw, name)
             except Exception:
-                logger.warning("Failed to fetch FRED series %s", series_id, exc_info=True)
+                logger.warning(
+                    "Failed to fetch FRED series %s", series_id, exc_info=True
+                )
 
         return results
 

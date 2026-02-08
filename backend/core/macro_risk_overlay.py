@@ -157,13 +157,15 @@ class MacroRiskOverlay:
         snapshot = self._build_snapshot(macro_data, insider_data, vol_regime_data)
 
         # Step 2: Count available signals
-        available_count = sum([
-            snapshot.credit_spread_available,
-            snapshot.vol_regime_available,
-            snapshot.yield_curve_available,
-            snapshot.seasonality_available,
-            snapshot.insider_breadth_available,
-        ])
+        available_count = sum(
+            [
+                snapshot.credit_spread_available,
+                snapshot.vol_regime_available,
+                snapshot.yield_curve_available,
+                snapshot.seasonality_available,
+                snapshot.insider_breadth_available,
+            ]
+        )
 
         # Step 3: If too few signals, return neutral (no adjustment)
         if available_count < self.MIN_SIGNALS_REQUIRED:
@@ -395,9 +397,7 @@ class MacroRiskOverlay:
             )
 
         if snapshot.yield_curve_available and snapshot.yield_curve_signal < -30:
-            warnings.append(
-                "Yield curve flat or inverted — recession risk elevated"
-            )
+            warnings.append("Yield curve flat or inverted — recession risk elevated")
 
         if composite < -60:
             warnings.append(
@@ -405,9 +405,7 @@ class MacroRiskOverlay:
                 "position sizes reduced to minimum"
             )
         elif composite < -30:
-            warnings.append(
-                "WARNING: Macro risk elevated — position sizes reduced"
-            )
+            warnings.append("WARNING: Macro risk elevated — position sizes reduced")
 
         # Positive warning for risk-on
         if composite > 40:

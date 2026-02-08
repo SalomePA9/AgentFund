@@ -182,9 +182,7 @@ async def run_macro_data_job(
     # ---------------------------------------------------------------
     end_time = datetime.utcnow()
     summary["end_time"] = end_time.isoformat()
-    summary["duration_seconds"] = round(
-        (end_time - start_time).total_seconds(), 2
-    )
+    summary["duration_seconds"] = round((end_time - start_time).total_seconds(), 2)
 
     logger.info("Macro data job complete: %s", summary)
     return summary
@@ -222,16 +220,18 @@ async def _store_macro_indicators(
     for name, data in fred_data.items():
         if data.get("current") is None:
             continue
-        rows.append({
-            "indicator_name": name,
-            "source": "fred",
-            "value": data["current"],
-            "z_score": data.get("z_score"),
-            "percentile": data.get("percentile"),
-            "rate_of_change": data.get("rate_of_change"),
-            "metadata": {"mean": data.get("mean"), "std": data.get("std")},
-            "recorded_at": now,
-        })
+        rows.append(
+            {
+                "indicator_name": name,
+                "source": "fred",
+                "value": data["current"],
+                "z_score": data.get("z_score"),
+                "percentile": data.get("percentile"),
+                "rate_of_change": data.get("rate_of_change"),
+                "metadata": {"mean": data.get("mean"), "std": data.get("std")},
+                "recorded_at": now,
+            }
+        )
 
     if rows:
         try:
@@ -243,9 +243,7 @@ async def _store_macro_indicators(
             logger.warning("Failed to store macro indicators", exc_info=True)
 
 
-async def _store_vix_indicator(
-    db_client: Any, vol_data: dict[str, Any]
-) -> None:
+async def _store_vix_indicator(db_client: Any, vol_data: dict[str, Any]) -> None:
     """Store VIX regime data as a macro indicator."""
     now = datetime.utcnow().isoformat()
     try:
@@ -280,21 +278,25 @@ async def _store_insider_signals(
     stock_updates = []
 
     for symbol, data in insider_data.items():
-        rows.append({
-            "symbol": symbol,
-            "buy_count": data.get("buy_count", 0),
-            "sell_count": data.get("sell_count", 0),
-            "filing_count": data.get("filing_count", 0),
-            "buy_ratio": data.get("buy_ratio"),
-            "cluster_score": data.get("cluster_score"),
-            "net_sentiment": data.get("net_sentiment"),
-            "recorded_at": now,
-        })
-        stock_updates.append({
-            "symbol": symbol,
-            "insider_net_sentiment": data.get("net_sentiment"),
-            "insider_cluster_score": data.get("cluster_score"),
-        })
+        rows.append(
+            {
+                "symbol": symbol,
+                "buy_count": data.get("buy_count", 0),
+                "sell_count": data.get("sell_count", 0),
+                "filing_count": data.get("filing_count", 0),
+                "buy_ratio": data.get("buy_ratio"),
+                "cluster_score": data.get("cluster_score"),
+                "net_sentiment": data.get("net_sentiment"),
+                "recorded_at": now,
+            }
+        )
+        stock_updates.append(
+            {
+                "symbol": symbol,
+                "insider_net_sentiment": data.get("net_sentiment"),
+                "insider_cluster_score": data.get("cluster_score"),
+            }
+        )
 
     try:
         if rows:
@@ -316,19 +318,23 @@ async def _store_short_interest(
     stock_updates = []
 
     for symbol, data in si_data.items():
-        rows.append({
-            "symbol": symbol,
-            "short_pct_float": data.get("short_pct_float"),
-            "shares_short": data.get("shares_short"),
-            "short_ratio": data.get("short_ratio"),
-            "short_interest_score": data.get("short_interest_score"),
-            "recorded_at": now,
-        })
-        stock_updates.append({
-            "symbol": symbol,
-            "short_pct_float": data.get("short_pct_float"),
-            "short_interest_score": data.get("short_interest_score"),
-        })
+        rows.append(
+            {
+                "symbol": symbol,
+                "short_pct_float": data.get("short_pct_float"),
+                "shares_short": data.get("shares_short"),
+                "short_ratio": data.get("short_ratio"),
+                "short_interest_score": data.get("short_interest_score"),
+                "recorded_at": now,
+            }
+        )
+        stock_updates.append(
+            {
+                "symbol": symbol,
+                "short_pct_float": data.get("short_pct_float"),
+                "short_interest_score": data.get("short_interest_score"),
+            }
+        )
 
     try:
         if rows:
@@ -345,27 +351,27 @@ async def _store_overlay_state(db_client: Any, result: Any) -> None:
     """Store the overlay computation result for audit."""
     try:
         snapshot = result.snapshot
-        db_client.table("macro_risk_overlay_state").insert({
-            "risk_scale_factor": result.risk_scale_factor,
-            "composite_risk_score": result.composite_risk_score,
-            "regime_label": result.regime_label,
-            "credit_spread_signal": (
-                snapshot.credit_spread_signal if snapshot else None
-            ),
-            "vol_regime_signal": (
-                snapshot.vol_regime_signal if snapshot else None
-            ),
-            "yield_curve_signal": (
-                snapshot.yield_curve_signal if snapshot else None
-            ),
-            "seasonality_signal": (
-                snapshot.seasonality_signal if snapshot else None
-            ),
-            "insider_breadth_signal": (
-                snapshot.insider_breadth_signal if snapshot else None
-            ),
-            "warnings": result.warnings,
-            "computed_at": datetime.utcnow().isoformat(),
-        }).execute()
+        db_client.table("macro_risk_overlay_state").insert(
+            {
+                "risk_scale_factor": result.risk_scale_factor,
+                "composite_risk_score": result.composite_risk_score,
+                "regime_label": result.regime_label,
+                "credit_spread_signal": (
+                    snapshot.credit_spread_signal if snapshot else None
+                ),
+                "vol_regime_signal": (snapshot.vol_regime_signal if snapshot else None),
+                "yield_curve_signal": (
+                    snapshot.yield_curve_signal if snapshot else None
+                ),
+                "seasonality_signal": (
+                    snapshot.seasonality_signal if snapshot else None
+                ),
+                "insider_breadth_signal": (
+                    snapshot.insider_breadth_signal if snapshot else None
+                ),
+                "warnings": result.warnings,
+                "computed_at": datetime.utcnow().isoformat(),
+            }
+        ).execute()
     except Exception:
         logger.warning("Failed to store overlay state", exc_info=True)

@@ -33,7 +33,6 @@ import numpy as np
 
 from core.strategies.base import Signal, SignalGenerator, SignalType
 
-
 # =============================================================================
 # Cross-Asset / Macro Signals
 # =============================================================================
@@ -408,13 +407,13 @@ class SeasonalitySignal(SignalGenerator):
     # Historical average monthly excess returns for S&P 500
     # Based on long-run (1950-2024) seasonal patterns
     MONTHLY_BIAS: dict[int, float] = {
-        1: 0.012,   # January: +1.2% (January effect)
+        1: 0.012,  # January: +1.2% (January effect)
         2: -0.002,  # February: -0.2%
-        3: 0.010,   # March: +1.0%
-        4: 0.015,   # April: +1.5% (strong)
+        3: 0.010,  # March: +1.0%
+        4: 0.015,  # April: +1.5% (strong)
         5: -0.001,  # May: flat (sell in May)
         6: -0.002,  # June: -0.2%
-        7: 0.008,   # July: +0.8%
+        7: 0.008,  # July: +0.8%
         8: -0.005,  # August: -0.5%
         9: -0.010,  # September: -1.0% (worst month)
         10: 0.005,  # October: +0.5% (turnaround)
@@ -616,7 +615,9 @@ class AccrualsQualitySignal(SignalGenerator):
             accrual_proxy = 0.0
             if profit_margin > 0:
                 # ROE/margin ratio: high ratio with high debt = red flag
-                earnings_quality = profit_margin / max(0.01, abs(roe)) if roe != 0 else 1.0
+                earnings_quality = (
+                    profit_margin / max(0.01, abs(roe)) if roe != 0 else 1.0
+                )
 
                 # Debt-adjusted: high leverage amplifies accruals risk
                 debt_penalty = 0.0

@@ -86,7 +86,9 @@ class InsiderTransactionClient:
                 if data:
                     results[symbol] = data
             except Exception:
-                logger.debug("Failed to fetch insider data for %s", symbol, exc_info=True)
+                logger.debug(
+                    "Failed to fetch insider data for %s", symbol, exc_info=True
+                )
 
         logger.info(
             "Insider transactions: fetched data for %d/%d symbols",

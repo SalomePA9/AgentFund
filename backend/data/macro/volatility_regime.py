@@ -50,9 +50,7 @@ class VolatilityRegimeClient:
     VIX3M_TICKER = "^VIX3M"
     SPY_TICKER = "SPY"
 
-    async def fetch_regime(
-        self, lookback_days: int = 120
-    ) -> dict[str, Any]:
+    async def fetch_regime(self, lookback_days: int = 120) -> dict[str, Any]:
         """Fetch VIX data and compute regime indicators."""
         try:
             vix_data, vix3m_data, spy_data = await asyncio.gather(
