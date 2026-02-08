@@ -360,11 +360,11 @@ class MacroRiskOverlay:
         """
         Convert composite risk score (-100 to +100) to position scale factor.
 
-        Mapping:
+        Mapping (with default MIN_SCALE=0.25, MAX_SCALE=1.25):
         - composite = -100 → scale = 0.25 (75% position reduction)
-        - composite =  -50 → scale = 0.50 (50% reduction)
+        - composite =  -50 → scale = 0.625 (37.5% reduction)
         - composite =    0 → scale = 1.00 (no change)
-        - composite =  +50 → scale = 1.12 (12% increase)
+        - composite =  +50 → scale = 1.125 (12.5% increase)
         - composite = +100 → scale = 1.25 (25% increase)
 
         Asymmetric: cutting risk is more aggressive than adding risk.
