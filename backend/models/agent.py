@@ -23,6 +23,10 @@ class StrategyType(str, Enum):
     QUALITY_VALUE = "quality_value"
     QUALITY_MOMENTUM = "quality_momentum"
     DIVIDEND_GROWTH = "dividend_growth"
+    TREND_FOLLOWING = "trend_following"
+    SHORT_TERM_REVERSAL = "short_term_reversal"
+    STATISTICAL_ARBITRAGE = "statistical_arbitrage"
+    VOLATILITY_PREMIUM = "volatility_premium"
 
 
 class Persona(str, Enum):

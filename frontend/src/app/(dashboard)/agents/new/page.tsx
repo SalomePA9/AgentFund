@@ -7,30 +7,62 @@ import { InlineLoading, ErrorMessage } from '@/components/ui';
 import { formatCurrency, formatStrategyType } from '@/lib/utils';
 import type { AgentCreate, StrategyType, Persona } from '@/types';
 
-const strategies: { id: StrategyType; name: string; description: string }[] = [
+const strategies: { id: StrategyType; name: string; description: string; category: 'core' | 'advanced' }[] = [
   {
     id: 'momentum',
     name: 'Momentum',
     description:
-      'Ride winners, cut losers. Buy stocks with strong recent performance and positive trends.',
+      'Buy stocks with strong recent performance and positive trends. Sentiment filters out momentum stocks with negative news to help avoid crashes.',
+    category: 'core',
   },
   {
     id: 'quality_value',
     name: 'Quality Value',
     description:
-      'Find underpriced quality companies. Low valuations with strong fundamentals.',
+      'Find underpriced quality companies with low valuations and strong fundamentals. Sentiment confirmation helps avoid value traps by ensuring outlook isn\'t deteriorating.',
+    category: 'core',
   },
   {
     id: 'quality_momentum',
     name: 'Quality Momentum',
     description:
-      'Best of both worlds. Strong momentum filtered by quality metrics.',
+      'Strong momentum filtered by quality metrics. Sentiment is weighted as a third ranking factor (35%) alongside momentum and quality for a multi-signal edge.',
+    category: 'core',
   },
   {
     id: 'dividend_growth',
     name: 'Dividend Growth',
     description:
-      'Steady compounders. Companies with long dividend growth track records.',
+      'Steady compounders with long dividend growth track records. Sentiment filters flag companies at risk of dividend cuts before they happen.',
+    category: 'core',
+  },
+  {
+    id: 'trend_following',
+    name: 'Trend Following',
+    description:
+      'Go long uptrends, short downtrends — managed futures style. Sentiment adjusts position sizing: divergence between price trend and sentiment reduces exposure.',
+    category: 'advanced',
+  },
+  {
+    id: 'short_term_reversal',
+    name: 'Short-Term Reversal',
+    description:
+      'Mean reversion on 1-5 day horizons — buy recent losers, sell recent winners. Sentiment confirmation avoids "falling knives" where drops reflect real fundamental shifts.',
+    category: 'advanced',
+  },
+  {
+    id: 'statistical_arbitrage',
+    name: 'Statistical Arbitrage',
+    description:
+      'Market-neutral pairs trading that exploits relative mispricings between related securities. Sentiment divergence between pairs acts as an additional spread signal.',
+    category: 'advanced',
+  },
+  {
+    id: 'volatility_premium',
+    name: 'Volatility Premium',
+    description:
+      'Harvest the volatility risk premium by owning low-vol stocks. Sentiment acts as a crisis detector — extreme negative sentiment triggers exits before vol spikes.',
+    category: 'advanced',
   },
 ];
 
@@ -190,7 +222,7 @@ export default function NewAgentPage() {
           </div>
 
           <div className="space-y-3">
-            {strategies.map((strategy) => (
+            {strategies.filter((s) => s.category === 'core').map((strategy) => (
               <button
                 key={strategy.id}
                 onClick={() => updateForm({ strategy_type: strategy.id })}
@@ -206,6 +238,28 @@ export default function NewAgentPage() {
                 </div>
               </button>
             ))}
+          </div>
+
+          <div className="mt-6">
+            <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">Advanced Strategies</h3>
+            <div className="space-y-3">
+              {strategies.filter((s) => s.category === 'advanced').map((strategy) => (
+                <button
+                  key={strategy.id}
+                  onClick={() => updateForm({ strategy_type: strategy.id })}
+                  className={`w-full p-4 text-left rounded-lg border transition-all ${
+                    formData.strategy_type === strategy.id
+                      ? 'border-accent bg-accent/10'
+                      : 'border-border hover:border-zinc-500'
+                  }`}
+                >
+                  <div className="font-medium">{strategy.name}</div>
+                  <div className="text-sm text-zinc-400 mt-1">
+                    {strategy.description}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex justify-end">

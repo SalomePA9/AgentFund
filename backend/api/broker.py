@@ -4,16 +4,19 @@ Broker API endpoints.
 Handles Alpaca broker connection, account info, orders, and positions.
 """
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from supabase import Client
 
 from api.auth import get_current_user
 from core.broker import AlpacaBroker, create_broker
 from core.security import decrypt_api_key, encrypt_api_key
 from database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -29,6 +32,13 @@ class BrokerConnectRequest(BaseModel):
     api_key: str
     api_secret: str
     paper_mode: bool = True
+
+    @field_validator("api_key", "api_secret", mode="before")
+    @classmethod
+    def strip_whitespace(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
 
 class BrokerStatus(BaseModel):
@@ -176,16 +186,51 @@ async def connect_broker(
     Validates credentials by connecting to Alpaca, then stores encrypted
     credentials in the database.
     """
+    if not credentials.api_key or not credentials.api_secret:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API key and secret are required.",
+        )
+
+    # Test connection with provided credentials
     try:
-        # Test connection with provided credentials
         broker = create_broker(
             api_key=credentials.api_key,
             api_secret=credentials.api_secret,
             paper=credentials.paper_mode,
         )
-        account = broker.get_account()
+    except Exception as e:
+        logger.error(f"Failed to initialize Alpaca client: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to initialize broker client. Please check that your API key and secret are valid.",
+        )
 
-        # Encrypt and store credentials
+    try:
+        account = broker.get_account()
+    except Exception as e:
+        error_str = str(e).lower()
+        if (
+            "forbidden" in error_str
+            or "403" in error_str
+            or "unauthorized" in error_str
+            or "401" in error_str
+        ):
+            detail = "Invalid API credentials. Please verify your API key and secret are correct and have not been revoked."
+        elif "timeout" in error_str or "timed out" in error_str:
+            detail = "Connection to Alpaca timed out. Please try again."
+        elif "connection" in error_str or "network" in error_str:
+            detail = "Could not reach Alpaca servers. Please check your internet connection and try again."
+        else:
+            detail = f"Failed to verify Alpaca credentials: {e}"
+        logger.error(f"Alpaca account verification failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+    # Encrypt and store credentials
+    try:
         encrypted_key = encrypt_api_key(credentials.api_key)
         encrypted_secret = encrypt_api_key(credentials.api_secret)
 
@@ -197,23 +242,23 @@ async def connect_broker(
                 "total_capital": account["portfolio_value"],
             }
         ).eq("id", current_user["id"]).execute()
-
-        return BrokerStatus(
-            connected=True,
-            paper_mode=credentials.paper_mode,
-            account_id=account["account_id"],
-            status=account["status"],
-            portfolio_value=account["portfolio_value"],
-            cash=account["cash"],
-            buying_power=account["buying_power"],
-            equity=account["equity"],
-        )
-
     except Exception as e:
+        logger.error(f"Failed to store broker credentials: {e}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to connect to Alpaca: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Credentials are valid but we failed to save them. Please try again.",
         )
+
+    return BrokerStatus(
+        connected=True,
+        paper_mode=credentials.paper_mode,
+        account_id=account["account_id"],
+        status=account["status"],
+        portfolio_value=account["portfolio_value"],
+        cash=account["cash"],
+        buying_power=account["buying_power"],
+        equity=account["equity"],
+    )
 
 
 @router.get("/status", response_model=BrokerStatus)

@@ -94,7 +94,7 @@ class AlpacaBroker:
             account = self.trading_client.get_account()
 
             return {
-                "account_id": account.id,
+                "account_id": str(account.id),
                 "status": account.status.value,
                 "currency": account.currency,
                 "buying_power": float(account.buying_power),

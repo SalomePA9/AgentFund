@@ -33,7 +33,11 @@ export type StrategyType =
   | 'momentum'
   | 'quality_value'
   | 'quality_momentum'
-  | 'dividend_growth';
+  | 'dividend_growth'
+  | 'trend_following'
+  | 'short_term_reversal'
+  | 'statistical_arbitrage'
+  | 'volatility_premium';
 
 export type Persona =
   | 'analytical'
