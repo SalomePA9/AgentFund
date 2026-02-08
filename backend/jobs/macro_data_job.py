@@ -300,7 +300,9 @@ async def _store_insider_signals(
 
     try:
         if rows:
-            db_client.table("insider_signals").insert(rows).execute()
+            db_client.table("insider_signals").upsert(
+                rows, on_conflict="symbol"
+            ).execute()
         if stock_updates:
             db_client.table("stocks").upsert(
                 stock_updates, on_conflict="symbol"
@@ -338,7 +340,9 @@ async def _store_short_interest(
 
     try:
         if rows:
-            db_client.table("short_interest").insert(rows).execute()
+            db_client.table("short_interest").upsert(
+                rows, on_conflict="symbol"
+            ).execute()
         if stock_updates:
             db_client.table("stocks").upsert(
                 stock_updates, on_conflict="symbol"
