@@ -16,7 +16,7 @@ Data sources:
 
 Signals produced:
 - short_pct_float: Current short interest as % of float
-- short_interest_score: Normalised -100 to +100 (high short = bearish)
+- short_interest_score: Normalised -100 to 0 (high short = bearish, low = neutral)
 - short_interest_roc: Rate of change in short interest (when historical data available)
 """
 
