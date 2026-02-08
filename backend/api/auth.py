@@ -11,10 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, EmailStr
 from supabase import Client
-
-from postgrest.exceptions import APIError
 
 from config import get_settings
 from database import get_db
