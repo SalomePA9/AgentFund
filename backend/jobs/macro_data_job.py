@@ -237,7 +237,7 @@ async def _store_macro_indicators(
         try:
             db_client.table("macro_indicators").upsert(
                 rows,
-                on_conflict="indicator_name,DATE(recorded_at)",
+                on_conflict="indicator_name",
             ).execute()
         except Exception:
             logger.warning("Failed to store macro indicators", exc_info=True)
@@ -263,7 +263,7 @@ async def _store_vix_indicator(db_client: Any, vol_data: dict[str, Any]) -> None
                 },
                 "recorded_at": now,
             },
-            on_conflict="indicator_name,DATE(recorded_at)",
+            on_conflict="indicator_name",
         ).execute()
     except Exception:
         logger.warning("Failed to store VIX indicator", exc_info=True)
