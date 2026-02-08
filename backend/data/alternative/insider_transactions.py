@@ -17,6 +17,7 @@ Signals produced:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -80,7 +81,7 @@ class InsiderTransactionClient:
         if not self._cik_cache:
             await self._load_cik_mapping()
 
-        for symbol in symbols:
+        for i, symbol in enumerate(symbols):
             try:
                 data = await self._fetch_for_symbol(symbol, lookback_days)
                 if data:
@@ -89,6 +90,10 @@ class InsiderTransactionClient:
                 logger.debug(
                     "Failed to fetch insider data for %s", symbol, exc_info=True
                 )
+            # SEC EDGAR enforces 10 requests/second. Sleep between symbols
+            # to stay well under the rate limit and avoid IP bans.
+            if i < len(symbols) - 1:
+                await asyncio.sleep(0.15)
 
         logger.info(
             "Insider transactions: fetched data for %d/%d symbols",
@@ -186,8 +191,10 @@ class InsiderTransactionClient:
                 if len(filings_to_classify) >= 10:
                     break
 
-            # Classify each filing via XML parsing
-            for accession, primary_doc in filings_to_classify:
+            # Classify each filing via XML parsing (with rate limiting)
+            for j, (accession, primary_doc) in enumerate(filings_to_classify):
+                if j > 0:
+                    await asyncio.sleep(0.15)  # SEC rate limit: 10 req/s
                 tx_type = await self._classify_filing(cik, accession, primary_doc)
                 if tx_type == "buy":
                     buy_count += 1
