@@ -535,7 +535,7 @@ async def sync_positions(
                         qty=float(qty),
                         stop_price=stop_price,
                         target_price=target_price_val,
-                        side=rec.side.value if rec else "long",
+                        side=rec.side.value if rec and rec.side else "long",
                     )
                     if bracket_ids.get("stop_order_id"):
                         row["stop_order_id"] = bracket_ids["stop_order_id"]
@@ -643,7 +643,7 @@ async def sync_positions(
                             qty=new_shares,
                             stop_price=stop_price,
                             target_price=target_price_val,
-                            side=rec.side.value if rec else "long",
+                            side=rec.side.value if rec and rec.side else "long",
                         )
                         if bracket_ids.get("stop_order_id"):
                             update["stop_order_id"] = bracket_ids["stop_order_id"]
