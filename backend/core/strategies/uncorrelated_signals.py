@@ -528,7 +528,6 @@ class EarningsRevisionsSignal(SignalGenerator):
         for symbol in symbols:
             data = market_data.get(symbol, {})
             pe_ratio = data.get("pe_ratio")
-            eps = data.get("eps")
             price = data.get("current_price")
 
             if not pe_ratio or not price or pe_ratio <= 0:
