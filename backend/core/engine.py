@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from core.factors import FactorCalculator
@@ -28,7 +28,6 @@ from core.sentiment_integration import (
     TemporalSentimentAnalyzer,
 )
 from core.strategies import (
-    SentimentConfig,
     SentimentMode,
     StrategyConfig,
     StrategyOutput,
@@ -129,7 +128,7 @@ class ExecutionResult:
     order_actions: list[OrderAction] = field(default_factory=list)
     regime: str = "neutral"
     error: str | None = None
-    executed_at: datetime = field(default_factory=datetime.utcnow)
+    executed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     macro_overlay: OverlayResult | None = None
 
 
@@ -274,12 +273,22 @@ class StrategyEngine:
                     market_data[sym]["integrated_composite"] = iscore.composite_score
 
             # Step 6: Instantiate and execute strategy.
-            # Disable the strategy-level sentiment overlay because the
-            # 7-layer SentimentFactorIntegrator has already processed
-            # sentiment into integrated_composite scores injected above.
-            # Running both would double-count sentiment and potentially
-            # contradict the integrator's more sophisticated analysis.
-            config.sentiment.mode = SentimentMode.DISABLED
+            # Disable the strategy-level sentiment overlay for
+            # CrossSectionalFactor strategies because the 7-layer
+            # SentimentFactorIntegrator has already processed sentiment
+            # into integrated_composite scores injected above.  Running
+            # both would double-count sentiment.
+            #
+            # Advanced strategies (TrendFollowing, ShortTermReversal,
+            # StatisticalArbitrage, VolatilityPremium) do NOT read
+            # integrated_composite and rely on their own sentiment
+            # overlays (RISK_ADJUSTMENT, CONFIRMATION, ALPHA, FILTER),
+            # so we preserve their designed sentiment modes.  This is
+            # especially important for VolatilityPremium's crisis gate
+            # which requires FILTER mode to halt vol-selling during
+            # market crashes.
+            if config.strategy_type == StrategyType.CROSS_SECTIONAL_FACTOR:
+                config.sentiment.mode = SentimentMode.DISABLED
 
             strategy = StrategyRegistry.create(config)
             output = await strategy.execute(
@@ -470,6 +479,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=(
                             f"Stop-loss breached: price {current_price:.2f} "
                             f"{'<=' if side == 'long' else '>='} stop {stop:.2f}"
@@ -529,6 +539,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=(
                             f"Take-profit reached: price {current_price:.2f} "
                             f"{'≥' if side == 'long' else '≤'} target {target:.2f}"
@@ -585,6 +596,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=(
                             f"Position aged out: held {days_held}d, "
                             f"max horizon {max_days}d"
@@ -755,7 +767,7 @@ class StrategyEngine:
                 return None
 
             last_dt = datetime.fromisoformat(last_rebalance_str.replace("Z", "+00:00"))
-            now = datetime.utcnow().replace(tzinfo=last_dt.tzinfo)
+            now = datetime.now(timezone.utc)
             elapsed_hours = (now - last_dt).total_seconds() / 3600
 
             if elapsed_hours < min_hours:
@@ -826,6 +838,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=f"Circuit breaker: drawdown {drawdown:.1%} exceeds {max_drawdown:.0%} limit",
                     )
                 )
@@ -977,15 +990,14 @@ class StrategyEngine:
             sentiment_mode=sentiment_mode,
         )
 
-        # Override from agent params
-        sentiment_weight = ctx.strategy_params.get("sentiment_weight", 0.3)
-        config.sentiment = SentimentConfig(
-            mode=sentiment_mode,
-            news_weight=0.4,
-            social_weight=0.3,
-            velocity_weight=0.3,
-            sentiment_alpha_weight=sentiment_weight,
-        )
+        # Override from agent params — preserve the preset's carefully tuned
+        # sentiment weights (news/social/velocity/filter_threshold) and only
+        # update the mode and alpha weight from agent configuration.
+        config.sentiment.mode = sentiment_mode
+        if "sentiment_weight" in ctx.strategy_params:
+            config.sentiment.sentiment_alpha_weight = ctx.strategy_params[
+                "sentiment_weight"
+            ]
 
         # Apply max_positions and other custom params
         if "max_positions" in ctx.strategy_params:
@@ -996,14 +1008,26 @@ class StrategyEngine:
         return config
 
     def _fetch_price_history(self, symbols: list[str]) -> dict[str, list[float]]:
-        """Fetch price history from the price_history table for all symbols."""
+        """Fetch price history from the price_history table for all symbols.
+
+        Limits to the most recent 400 trading days (~18 months) which is
+        sufficient for all factor calculations (momentum needs at most 252
+        days) while avoiding unbounded table scans.
+        """
+        from datetime import datetime, timedelta, timezone
+
         history: dict[str, list[float]] = {s: [] for s in symbols}
+
+        # 400 trading days ≈ 560 calendar days — covers the 252-day lookback
+        # needed for 12-month momentum with comfortable margin.
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=560)).strftime("%Y-%m-%d")
 
         try:
             result = (
                 self._db.table("price_history")
                 .select("symbol, date, price")
                 .in_("symbol", symbols)
+                .gte("date", cutoff)
                 .order("date", desc=False)
                 .execute()
             )

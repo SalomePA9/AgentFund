@@ -150,6 +150,7 @@ class VolatilityRegimeClient:
             regime_score = min(regime_score, -0.3)
         elif regime_score <= 0.2 or vix_current >= 20 or term_structure < -0.02:
             regime_label = "elevated"
+            regime_score = min(regime_score, 0.2)
         else:
             regime_label = "calm"
 

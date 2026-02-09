@@ -373,7 +373,7 @@ class MacroRiskOverlay:
                 if w > MAX_NORM_WEIGHT:
                     excess += w - MAX_NORM_WEIGHT
                     norm_weights[name] = MAX_NORM_WEIGHT
-                else:
+                elif w < MAX_NORM_WEIGHT:
                     uncapped_total += w
 
             if excess <= 0:

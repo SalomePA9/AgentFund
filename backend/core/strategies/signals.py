@@ -518,8 +518,12 @@ class RealizedVolatilitySignal(SignalGenerator):
                     )
                     returns.append(r)
 
-                # Annualized volatility
-                vol = np.std(returns) * np.sqrt(252)
+                # Annualized volatility (sample std, ddof=1)
+                vol = (
+                    float(np.std(returns, ddof=1)) * np.sqrt(252)
+                    if len(returns) > 1
+                    else 0.0
+                )
                 vol_data[symbol] = vol
 
         if not vol_data:
@@ -590,7 +594,7 @@ class ShortTermReversalSignal(SignalGenerator):
         # Calculate z-scores for reversal
         ret_values = list(returns.values())
         mean_ret = np.mean(ret_values)
-        std_ret = np.std(ret_values)
+        std_ret = float(np.std(ret_values, ddof=1)) if len(ret_values) > 1 else 1.0
 
         signals = []
         for symbol, ret in returns.items():
@@ -651,7 +655,7 @@ class ZScoreSignal(SignalGenerator):
             if prices and current_price and len(prices) >= self.lookback_days:
                 window = prices[-self.lookback_days :]
                 mean = np.mean(window)
-                std = np.std(window)
+                std = float(np.std(window, ddof=1)) if len(window) > 1 else 0.0
 
                 if std > 0:
                     z_score = (current_price - mean) / std

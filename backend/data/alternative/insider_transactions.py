@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -141,9 +141,9 @@ class InsiderTransactionClient:
         if not cik:
             return None
 
-        date_from = (datetime.utcnow() - timedelta(days=lookback_days)).strftime(
-            "%Y-%m-%d"
-        )
+        date_from = (
+            datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        ).strftime("%Y-%m-%d")
 
         try:
             url = f"https://data.sec.gov/submissions/CIK{cik}.json"

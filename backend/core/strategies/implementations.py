@@ -31,6 +31,7 @@ from core.strategies.base import (
 )
 from core.strategies.signals import (
     CrossSectionalMomentumSignal,
+    DividendYieldSignal,
     NewsSentimentSignal,
     QualitySignal,
     RealizedVolatilitySignal,
@@ -167,6 +168,12 @@ class TrendFollowingStrategy(BaseStrategy):
             else:
                 weight = abs(mom_signal.value) / 100 * 0.05  # Default 5% base
 
+            # Apply signal confidence to weight.  The sentiment overlay
+            # (RISK_ADJUSTMENT mode) adjusts confidence by ±20% based on
+            # sentiment-trend alignment — aligned sentiment increases
+            # position size, divergent sentiment reduces it.
+            weight *= mom_signal.confidence
+
             # Cap at max position size
             weight = min(weight, self.config.risk.max_position_size)
 
@@ -261,6 +268,12 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         if factors.get("low_vol", 0) > 0:
             self.signal_generators.append(RealizedVolatilitySignal())
             self.factor_weights[SignalType.REALIZED_VOLATILITY] = factors["low_vol"]
+
+        if factors.get("dividend", 0) > 0:
+            self.signal_generators.append(
+                DividendYieldSignal(min_yield=params.get("min_dividend_yield", 0.0))
+            )
+            self.factor_weights[SignalType.DIVIDEND_YIELD] = factors["dividend"]
 
         # Add sentiment if enabled
         if self.config.sentiment.mode == SentimentMode.ALPHA:
@@ -360,6 +373,11 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         n = len(sorted_symbols)
         n_long = max(1, int(n * top_pct / 100))
         n_short = max(1, int(n * bottom_pct / 100)) if allow_short else 0
+
+        # Honour top_n (set by engine from agent's max_positions) as a hard cap
+        top_n = params.get("top_n")
+        if top_n is not None:
+            n_long = min(n_long, int(top_n))
 
         positions = []
 
@@ -760,6 +778,26 @@ class StatisticalArbitrageStrategy(BaseStrategy):
                     side = PositionSide.LONG if z < 0 else PositionSide.SHORT
                     weight = min(abs(z) / 10, self.config.risk.max_position_size)
 
+                    # Apply signal confidence to weight.  The ALPHA
+                    # sentiment overlay blends sentiment into the signal
+                    # and adjusts confidence accordingly — sentiment
+                    # divergence between pair-like names increases
+                    # conviction while convergence reduces it.
+                    weight *= z_signal.confidence
+
+                    # Sentiment boost: when sentiment for a symbol
+                    # confirms the mean-reversion direction, increase
+                    # position weight by up to 15%.
+                    sent = sentiment_signals.get(symbol)
+                    if sent is not None:
+                        # expected_dir: +1 for long (z<0), -1 for short
+                        expected_dir = -1 if z < 0 else 1
+                        sent_dir = -1 if sent.value > 0 else 1
+                        if expected_dir == sent_dir:
+                            weight *= 1.15  # sentiment confirms reversion
+
+                    weight = min(weight, self.config.risk.max_position_size)
+
                     positions.append(
                         Position(
                             symbol=symbol,
@@ -770,6 +808,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
                             metadata={
                                 "strategy": "statistical_arbitrage",
                                 "z_score": z,
+                                "sentiment_confirmation": sent is not None,
                             },
                         )
                     )

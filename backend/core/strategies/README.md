@@ -5,7 +5,7 @@ A modular, extensible quantitative strategy framework with sentiment integration
 ## Overview
 
 The strategy framework provides:
-- **9 pre-configured strategies** (4 original + 5 advanced)
+- **8 pre-configured strategies** (4 original + 4 advanced)
 - **Modular signal generators** that can be composed into custom strategies
 - **5 sentiment integration modes** for enhanced signal quality
 - **Risk management** with position sizing and stop-loss support

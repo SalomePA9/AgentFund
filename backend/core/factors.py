@@ -360,7 +360,7 @@ class FactorCalculator:
         - Dividend yield (60%)
         - 5-year dividend growth (40%)
 
-        Non-dividend payers get score of 0.
+        Non-dividend payers get a neutral score of 50.
         """
         results = {}
 
@@ -380,7 +380,7 @@ class FactorCalculator:
         yield_percentiles = self._to_percentiles(yield_values)
         growth_percentiles = self._to_percentiles(growth_values)
 
-        # Combine scores (non-dividend payers get 0)
+        # Combine scores (non-dividend payers get neutral 50)
         for symbol in market_data:
             div_yield = market_data[symbol].get("dividend_yield", 0)
 
@@ -389,7 +389,7 @@ class FactorCalculator:
                 growth_score = growth_percentiles.get(symbol, 50)
                 results[symbol] = 0.6 * yield_score + 0.4 * growth_score
             else:
-                results[symbol] = 0  # Non-dividend payers
+                results[symbol] = 50.0  # Non-dividend payers get neutral score
 
         return results
 
@@ -415,7 +415,9 @@ class FactorCalculator:
                 # Calculate from price history if ATR not available
                 if len(prices) >= 20:
                     returns = np.diff(prices[-20:]) / prices[-21:-1]
-                    vol = np.std(returns) * np.sqrt(252) * 100  # Annualized vol %
+                    vol = (
+                        float(np.std(returns, ddof=1)) * np.sqrt(252) * 100
+                    )  # Annualized vol %
                     results[symbol] = vol
 
         return results

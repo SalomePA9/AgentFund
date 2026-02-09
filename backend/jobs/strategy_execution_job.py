@@ -15,7 +15,7 @@ Pipeline order:
 import asyncio
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +76,9 @@ def _fetch_price_history(
 ) -> dict[str, list[float]]:
     """Fetch price history from the price_history table for all symbols."""
     history: dict[str, list[float]] = {s: [] for s in symbols}
-    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime(
+        "%Y-%m-%d"
+    )
 
     try:
         result = (
@@ -513,7 +515,7 @@ async def sync_positions(
                     "ticker": sym,
                     "shares": float(qty),
                     "entry_price": float(entry_price),
-                    "entry_date": datetime.utcnow().date().isoformat(),
+                    "entry_date": datetime.now(timezone.utc).date().isoformat(),
                     "entry_rationale": action.reason,
                     "current_price": float(current_price) if current_price else None,
                     "status": "open",
@@ -567,7 +569,7 @@ async def sync_positions(
 
                     update: dict[str, Any] = {
                         "status": "closed",
-                        "exit_date": datetime.utcnow().date().isoformat(),
+                        "exit_date": datetime.now(timezone.utc).date().isoformat(),
                         "exit_rationale": action.reason,
                         "exit_order_id": order_info.get("id"),
                     }
@@ -621,7 +623,9 @@ async def sync_positions(
                     if new_shares <= 0:
                         _cancel_gtc_orders(broker, pos_row)
                         update["status"] = "closed"
-                        update["exit_date"] = datetime.utcnow().date().isoformat()
+                        update["exit_date"] = (
+                            datetime.now(timezone.utc).date().isoformat()
+                        )
                         update["exit_rationale"] = action.reason
                         supabase.table("positions").update(update).eq(
                             "id", pos_row["id"]
@@ -963,10 +967,10 @@ async def run_strategy_execution_job() -> dict:
     """
     logger.info("=" * 60)
     logger.info("STRATEGY EXECUTION JOB STARTED")
-    logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
+    logger.info(f"Timestamp: {datetime.now(timezone.utc).isoformat()}")
     logger.info("=" * 60)
 
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     supabase = get_supabase_client()
 
     try:
@@ -1101,7 +1105,7 @@ async def run_strategy_execution_job() -> dict:
                     f"regime={result.regime}{overlay_info}"
                 )
 
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
 
         summary = {
@@ -1127,7 +1131,9 @@ async def run_strategy_execution_job() -> dict:
         return {
             "status": "error",
             "error": str(e),
-            "duration_seconds": (datetime.utcnow() - start_time).total_seconds(),
+            "duration_seconds": (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds(),
         }
 
 
