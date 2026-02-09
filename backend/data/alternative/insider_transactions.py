@@ -194,10 +194,18 @@ class InsiderTransactionClient:
                     sell_count += 1
                 # "neutral" filings (grants, exercises) are not counted
 
-            # If XML classification yielded nothing but we have filings,
-            # apply the empirical prior: ~40% of Form 4s are purchases,
-            # ~60% are sales (option exercises + dispositions).
-            if filing_count > 0 and buy_count == 0 and sell_count == 0:
+            # If NO XML documents were available to classify but we have
+            # filings, apply the empirical prior: ~40% of Form 4s are
+            # purchases, ~60% are sales (option exercises + dispositions).
+            # Do NOT apply this when classification was attempted but all
+            # filings were neutral (grants/exercises) — that is a real
+            # signal meaning "no meaningful insider buying or selling".
+            if (
+                filing_count > 0
+                and buy_count == 0
+                and sell_count == 0
+                and not filings_to_classify
+            ):
                 buy_count = round(filing_count * 0.4)
                 sell_count = filing_count - buy_count
 
