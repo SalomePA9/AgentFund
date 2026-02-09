@@ -578,72 +578,79 @@ async def generate_report(
             status="skipped",
         )
 
-    # Generate report for first/specified agent
-    agent = agents[0]
-    context = _build_agent_context(agent, db, target_date)
-
+    # Generate reports for all agents (or the specified one)
     generator = get_report_generator()
-    try:
-        report = generator.generate_daily_report(context)
-    except Exception as e:
-        logger.error(f"Failed to generate report: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Report generation failed: {str(e)}",
-        )
+    last_saved_report = None
+    generated_count = 0
 
-    # Save report to database
-    report_data = {
-        "agent_id": agent["id"],
-        "report_date": report.report_date.isoformat(),
-        "report_content": report.content,
-        "performance_snapshot": report.performance_snapshot,
-        "positions_snapshot": report.positions_snapshot,
-        "actions_taken": report.actions_taken,
-    }
+    for agent in agents:
+        context = _build_agent_context(agent, db, target_date)
 
-    # Upsert (update if exists for same date)
-    existing = (
-        db.table("daily_reports")
-        .select("id")
-        .eq("agent_id", agent["id"])
-        .eq("report_date", target_date.isoformat())
-        .execute()
-    )
+        try:
+            report = generator.generate_daily_report(context)
+        except Exception as e:
+            logger.error(
+                "Failed to generate report for agent %s: %s", agent["id"], e
+            )
+            if len(agents) == 1:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Report generation failed: {str(e)}",
+                )
+            continue
 
-    if existing.data:
-        # Update existing report
-        result = (
+        # Save report to database
+        report_data = {
+            "agent_id": agent["id"],
+            "report_date": report.report_date.isoformat(),
+            "report_content": report.content,
+            "performance_snapshot": report.performance_snapshot,
+            "positions_snapshot": report.positions_snapshot,
+            "actions_taken": report.actions_taken,
+        }
+
+        # Upsert (update if exists for same date)
+        existing = (
             db.table("daily_reports")
-            .update(report_data)
-            .eq("id", existing.data[0]["id"])
+            .select("id")
+            .eq("agent_id", agent["id"])
+            .eq("report_date", target_date.isoformat())
             .execute()
         )
-    else:
-        # Insert new report
-        result = db.table("daily_reports").insert(report_data).execute()
 
-    if not result.data:
+        if existing.data:
+            result = (
+                db.table("daily_reports")
+                .update(report_data)
+                .eq("id", existing.data[0]["id"])
+                .execute()
+            )
+        else:
+            result = db.table("daily_reports").insert(report_data).execute()
+
+        if result.data:
+            last_saved_report = result.data[0]
+            generated_count += 1
+
+    if not last_saved_report:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save report",
+            detail="Failed to save any reports",
         )
 
-    saved_report = result.data[0]
-
     return GenerateReportResponse(
-        message="Report generated successfully",
-        agent_id=agent["id"],
+        message=f"Generated {generated_count} report(s) successfully",
+        agent_id=str(agent_id) if agent_id else None,
         report_date=target_date,
         status="completed",
         report=ReportResponse(
-            id=saved_report["id"],
-            agent_id=saved_report["agent_id"],
-            report_date=saved_report["report_date"],
-            report_content=saved_report["report_content"],
-            performance_snapshot=saved_report["performance_snapshot"],
-            positions_snapshot=saved_report["positions_snapshot"],
-            actions_taken=saved_report["actions_taken"],
-            created_at=saved_report["created_at"],
+            id=last_saved_report["id"],
+            agent_id=last_saved_report["agent_id"],
+            report_date=last_saved_report["report_date"],
+            report_content=last_saved_report["report_content"],
+            performance_snapshot=last_saved_report["performance_snapshot"],
+            positions_snapshot=last_saved_report["positions_snapshot"],
+            actions_taken=last_saved_report["actions_taken"],
+            created_at=last_saved_report["created_at"],
         ),
     )
