@@ -1108,9 +1108,10 @@ When `strategy_execution_job` runs, it calls `StrategyEngine.execute_for_agent()
 - These scores are injected into market_data so the strategy can use them for ranking
 
 **Step 5: Execute strategy**
-- The strategy-level sentiment overlay is **disabled** (set to `SentimentMode.DISABLED`) because the 7-layer integrator already handles sentiment
+- For **factor-based strategies** (Momentum, Quality Value, Quality Momentum, Dividend Growth): the strategy-level sentiment overlay is **disabled** (`SentimentMode.DISABLED`) because the 7-layer integrator already blended sentiment into the `integrated_composite` scores these strategies rank by. Running sentiment again would double-count it.
+- For **advanced strategies** (Trend Following, Short-Term Reversal, Statistical Arbitrage, Volatility Premium): the strategy's configured sentiment mode is **kept active** — these strategies use their own specialised signal pipelines and don't read the integrated composite. For example, Trend Following uses RISK_ADJUSTMENT mode to scale position sizes via signal confidence when sentiment diverges from the price trend; Volatility Premium uses FILTER mode for its crisis gate that exits positions when aggregate sentiment drops below -50.
 - The strategy's signal generators produce raw signals
-- The strategy's portfolio constructor converts signals to position recommendations
+- The strategy's portfolio constructor converts signals to position recommendations (using signal confidence for position sizing in Trend Following and Statistical Arbitrage)
 - The strategy's risk management pass applies position caps, sector limits, stops, and correlation filters
 
 **Step 6: Post-processing**
