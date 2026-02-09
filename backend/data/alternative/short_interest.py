@@ -202,8 +202,10 @@ def compute_short_interest_roc(
 
         # Rate of change as percentage
         if prev == 0:
-            # New short initiation: treat as a bearish signal
-            change_pct = 50.0 if cur > 0 else 0.0
+            # New short initiation: scale proportionally to the new SI level.
+            # 10%+ float shorted from zero is maximally bearish (50),
+            # but a trivial 0.5% initiation should only score ~2.5.
+            change_pct = min(50.0, cur * 5.0) if cur > 0 else 0.0
         else:
             change_pct = (cur - prev) / prev * 100
 
