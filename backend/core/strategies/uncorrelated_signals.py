@@ -566,7 +566,7 @@ class EarningsRevisionsSignal(SignalGenerator):
         # Cross-sectional percentile ranking
         all_revisions = list(revision_data.values())
         mean_rev = float(np.mean(all_revisions))
-        std_rev = float(np.std(all_revisions)) if len(all_revisions) > 1 else 1.0
+        std_rev = float(np.std(all_revisions, ddof=1)) if len(all_revisions) > 1 else 1.0
 
         signals = []
         for symbol, revision in revision_data.items():
