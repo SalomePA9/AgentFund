@@ -371,8 +371,11 @@ class ShortInterestSignal(SignalGenerator):
             # Z-score relative to universe
             cs_z = (score - mean_score) / std_score if std_score > 0 else 0.0
 
-            # Blend absolute score with cross-sectional ranking
-            base_signal = score * 0.6 + cs_z * 15 * 0.2
+            # Blend absolute score with cross-sectional ranking.
+            # Offset score by +15 so zero SI is mildly bullish (institutions
+            # have no concerns), improving the signal's bullish/bearish
+            # symmetry: range shifts from [-60, 0] to [-51, +9].
+            base_signal = (score + 15) * 0.6 + cs_z * 15 * 0.2
 
             # Rate-of-change component: decreasing SI = covering = bullish
             # ROC score is positive when SI is increasing (bearish),
