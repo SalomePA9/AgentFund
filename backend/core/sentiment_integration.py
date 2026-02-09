@@ -128,7 +128,9 @@ class TemporalSentimentAnalyzer:
             logger.warning("No DB client — skipping temporal enrichment")
             return sentiment_data
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        ).isoformat()
         history_by_symbol = await self._fetch_history(cutoff)
 
         for symbol, sent in sentiment_data.items():
