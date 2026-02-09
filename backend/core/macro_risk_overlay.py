@@ -270,10 +270,10 @@ class MacroRiskOverlay:
 
         # Seasonality (always available — purely calendar-based)
         # Computed synchronously since it only uses calendar data.
-        from core.strategies.uncorrelated_signals import SeasonalitySignal
+        import calendar as cal_mod
         from datetime import datetime, timezone
 
-        import calendar as cal_mod
+        from core.strategies.uncorrelated_signals import SeasonalitySignal
 
         now = datetime.now(timezone.utc)
         month = now.month
