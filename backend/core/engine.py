@@ -829,6 +829,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=f"Circuit breaker: drawdown {drawdown:.1%} exceeds {max_drawdown:.0%} limit",
                     )
                 )
