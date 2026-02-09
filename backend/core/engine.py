@@ -991,15 +991,14 @@ class StrategyEngine:
             sentiment_mode=sentiment_mode,
         )
 
-        # Override from agent params
-        sentiment_weight = ctx.strategy_params.get("sentiment_weight", 0.3)
-        config.sentiment = SentimentConfig(
-            mode=sentiment_mode,
-            news_weight=0.4,
-            social_weight=0.3,
-            velocity_weight=0.3,
-            sentiment_alpha_weight=sentiment_weight,
-        )
+        # Override from agent params — preserve the preset's carefully tuned
+        # sentiment weights (news/social/velocity/filter_threshold) and only
+        # update the mode and alpha weight from agent configuration.
+        config.sentiment.mode = sentiment_mode
+        if "sentiment_weight" in ctx.strategy_params:
+            config.sentiment.sentiment_alpha_weight = ctx.strategy_params[
+                "sentiment_weight"
+            ]
 
         # Apply max_positions and other custom params
         if "max_positions" in ctx.strategy_params:
