@@ -7,7 +7,7 @@ persona-specific formatting and content.
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from llm.client import ClaudeClient, get_claude_client
@@ -390,7 +390,7 @@ uncorrelated signal context into the narrative — don't just list the numbers."
                 positions_snapshot=context.positions or [],
                 actions_taken=context.activities or [],
                 tokens_used=usage.total_tokens,
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -431,7 +431,7 @@ Note: Full AI-generated reports will be available once the Anthropic API key is 
             positions_snapshot=context.positions or [],
             actions_taken=context.activities or [],
             tokens_used=0,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
 
     def generate_team_summary(
