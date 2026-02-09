@@ -651,7 +651,7 @@ class ZScoreSignal(SignalGenerator):
             if prices and current_price and len(prices) >= self.lookback_days:
                 window = prices[-self.lookback_days :]
                 mean = np.mean(window)
-                std = np.std(window)
+                std = float(np.std(window, ddof=1)) if len(window) > 1 else 0.0
 
                 if std > 0:
                     z_score = (current_price - mean) / std
