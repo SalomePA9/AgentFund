@@ -90,7 +90,7 @@ Market Data (prices, fundamentals, dividends)
 - **Every signal is normalised to -100 (strong sell) to +100 (strong buy).** This makes it possible to combine completely different data sources — a credit spread z-score and a social media sentiment score — on the same scale.
 - **Factor scores are normalised to 0-100 percentile.** A stock with a momentum score of 85 is in the 85th percentile of the universe — it has stronger momentum than 85% of the other stocks being tracked.
 - **Strategies never see raw data.** They receive pre-computed signals and scores, so you can swap data sources without changing strategy logic.
-- **Sentiment is integrated before strategies run.** The 7-layer `SentimentFactorIntegrator` blends sentiment into factor scores *before* the strategy makes its decisions. The strategy-level sentiment overlay is then disabled to avoid double-counting.
+- **Sentiment is integrated before strategies run.** The 7-layer `SentimentFactorIntegrator` blends sentiment into factor scores *before* the strategy makes its decisions. For factor-based strategies (Momentum, Quality Value, Quality Momentum, Dividend Growth), the strategy-level sentiment overlay is disabled to avoid double-counting because they already consume the `integrated_composite` scores. Advanced strategies (Trend Following, Short-Term Reversal, Statistical Arbitrage, Volatility Premium) keep their designed sentiment modes active since they use their own specialised signal pipelines rather than the integrated composite.
 - **The Macro Risk Overlay never overrides strategy direction.** It only scales position *sizes* up or down. If a strategy says "buy AAPL," the overlay can shrink how much AAPL you buy during a crisis, but it will never flip that buy into a sell.
 
 ---
@@ -213,7 +213,7 @@ Every strategy interacts with sentiment and uncorrelated signals through **three
 
 2. **Macro Risk Overlay** — After the strategy produces its positions, the `MacroRiskOverlay` scales all position sizes based on credit spreads, VIX, yield curve, seasonality, and insider breadth. Every strategy is affected by this equally.
 
-3. **Strategy-specific sentiment mode** — Each strategy is *configured* with a sentiment mode (FILTER, ALPHA, CONFIRMATION, RISK_ADJUSTMENT), but this mode is **disabled at runtime** because the 7-layer integrator (layer 1) already handles sentiment more sophisticatedly. The configured mode still documents the *intent* of how sentiment should relate to each strategy.
+3. **Strategy-specific sentiment mode** — Each strategy is configured with a sentiment mode (FILTER, ALPHA, CONFIRMATION, RISK_ADJUSTMENT). For the four **factor-based strategies** (Momentum, Quality Value, Quality Momentum, Dividend Growth), this mode is **disabled at runtime** because they consume the `integrated_composite` scores from layer 1, and running sentiment twice would double-count it. The four **advanced strategies** (Trend Following, Short-Term Reversal, Statistical Arbitrage, Volatility Premium) **keep their designed sentiment modes active** — they don't read the integrated composite and instead apply sentiment through their own specialised mechanisms (position sizing via confidence, sentiment confirmation, crisis gating, etc.).
 
 ---
 
@@ -463,7 +463,7 @@ AgentFund collects sentiment from two primary sources:
 
 ### 5.2 The Five Sentiment Modes
 
-Each strategy is configured with one of five modes that determine how sentiment interacts with strategy signals. These modes are defined in the `SentimentConfig` but are applied through the pre-execution integrator rather than at the strategy level.
+Each strategy is configured with one of five modes that determine how sentiment interacts with strategy signals. For the four factor-based strategies (Momentum, Quality Value, Quality Momentum, Dividend Growth), sentiment is handled entirely by the pre-execution 7-layer integrator and the strategy-level mode is disabled. For the four advanced strategies (Trend Following, Short-Term Reversal, Statistical Arbitrage, Volatility Premium), the configured mode is applied at the strategy level through the `_apply_sentiment_overlay` method, which modifies signal confidence and/or value before portfolio construction.
 
 #### DISABLED
 Sentiment is ignored entirely. The strategy relies purely on quantitative factor scores.
