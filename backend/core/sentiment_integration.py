@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import numpy as np
@@ -128,7 +128,7 @@ class TemporalSentimentAnalyzer:
             logger.warning("No DB client — skipping temporal enrichment")
             return sentiment_data
 
-        cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
         history_by_symbol = await self._fetch_history(cutoff)
 
         for symbol, sent in sentiment_data.items():
