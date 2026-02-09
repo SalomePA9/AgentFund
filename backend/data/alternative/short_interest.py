@@ -103,9 +103,13 @@ class ShortInterestClient:
 
             # yfinance returns shortPercentOfFloat as a decimal fraction
             # (e.g. 0.03 = 3%). Always convert to percentage.
-            if short_pct is not None and float_shares:
-                # Validate against shares_short / float_shares if available
-                if shares_short and float_shares > 0:
+            if short_pct is not None:
+                if (
+                    shares_short is not None
+                    and float_shares is not None
+                    and float_shares > 0
+                ):
+                    # Validate against shares_short / float_shares
                     computed_pct = (shares_short / float_shares) * 100
                     # If short_pct looks like a decimal fraction (typical yfinance)
                     # and computed_pct is in a similar range, trust computed
@@ -115,8 +119,8 @@ class ShortInterestClient:
                         short_pct = short_pct * 100
                     # else: short_pct already in percentage form
                 else:
-                    # No float_shares to validate — yfinance consistently
-                    # returns decimal fractions, so multiply
+                    # No float_shares/shares_short to validate — yfinance
+                    # consistently returns decimal fractions, so multiply
                     short_pct = short_pct * 100
 
             # Compute short interest score (-100 to +100)
