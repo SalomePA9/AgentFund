@@ -415,7 +415,7 @@ class FactorCalculator:
                 # Calculate from price history if ATR not available
                 if len(prices) >= 20:
                     returns = np.diff(prices[-20:]) / prices[-21:-1]
-                    vol = np.std(returns) * np.sqrt(252) * 100  # Annualized vol %
+                    vol = float(np.std(returns, ddof=1)) * np.sqrt(252) * 100  # Annualized vol %
                     results[symbol] = vol
 
         return results
