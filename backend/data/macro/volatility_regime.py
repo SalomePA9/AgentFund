@@ -136,20 +136,22 @@ class VolatilityRegimeClient:
         if realized_vol is not None:
             iv_rv_spread = vix_current - realized_vol
 
-        # Regime classification
-        if vix_current >= 30 or term_structure < -0.05:
-            regime_label = "crisis"
-        elif vix_current >= 20 or term_structure < -0.02:
-            regime_label = "elevated"
-        else:
-            regime_label = "calm"
-
         # Regime score: continuous -1 (crisis) to +1 (calm)
         # Based on VIX level and term structure
         vix_component = np.clip(1.0 - (vix_current - 12.0) / 25.0, -1.0, 1.0)
         ts_component = np.clip(term_structure * 5.0, -1.0, 1.0)
         regime_score = float(0.6 * vix_component + 0.4 * ts_component)
         regime_score = max(-1.0, min(1.0, regime_score))
+
+        # Regime classification — derived from regime_score to ensure the
+        # discrete label and the continuous score never contradict.
+        if regime_score <= -0.3 or vix_current >= 30 or term_structure < -0.05:
+            regime_label = "crisis"
+            regime_score = min(regime_score, -0.3)
+        elif regime_score <= 0.2 or vix_current >= 20 or term_structure < -0.02:
+            regime_label = "elevated"
+        else:
+            regime_label = "calm"
 
         return {
             "vix_current": round(vix_current, 2),
