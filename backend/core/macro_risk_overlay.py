@@ -241,9 +241,17 @@ class MacroRiskOverlay:
 
         # Volatility regime
         if vol_regime_data.get("vix_current") is not None:
-            snapshot.vol_regime_signal = max(
-                -100, min(100, vol_regime_data.get("regime_score", 0.0) * 100)
-            )
+            vix_current = vol_regime_data["vix_current"]
+            signal = vol_regime_data.get("regime_score", 0.0) * 100
+
+            # Amplify extremes (matching VolatilityRegimeSignal.generate):
+            # VIX > 35 is crisis territory, VIX < 12 is extreme calm
+            if vix_current > 35:
+                signal = min(signal, -80)
+            elif vix_current < 12:
+                signal = max(signal, 60)
+
+            snapshot.vol_regime_signal = max(-100, min(100, signal))
             snapshot.vol_regime_available = True
 
         # Yield curve
