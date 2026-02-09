@@ -1000,14 +1000,26 @@ class StrategyEngine:
         return config
 
     def _fetch_price_history(self, symbols: list[str]) -> dict[str, list[float]]:
-        """Fetch price history from the price_history table for all symbols."""
+        """Fetch price history from the price_history table for all symbols.
+
+        Limits to the most recent 400 trading days (~18 months) which is
+        sufficient for all factor calculations (momentum needs at most 252
+        days) while avoiding unbounded table scans.
+        """
+        from datetime import datetime, timedelta, timezone
+
         history: dict[str, list[float]] = {s: [] for s in symbols}
+
+        # 400 trading days ≈ 560 calendar days — covers the 252-day lookback
+        # needed for 12-month momentum with comfortable margin.
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=560)).strftime("%Y-%m-%d")
 
         try:
             result = (
                 self._db.table("price_history")
                 .select("symbol, date, price")
                 .in_("symbol", symbols)
+                .gte("date", cutoff)
                 .order("date", desc=False)
                 .execute()
             )
