@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from core.factors import FactorCalculator
@@ -129,7 +129,7 @@ class ExecutionResult:
     order_actions: list[OrderAction] = field(default_factory=list)
     regime: str = "neutral"
     error: str | None = None
-    executed_at: datetime = field(default_factory=datetime.utcnow)
+    executed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     macro_overlay: OverlayResult | None = None
 
 
@@ -758,7 +758,7 @@ class StrategyEngine:
                 return None
 
             last_dt = datetime.fromisoformat(last_rebalance_str.replace("Z", "+00:00"))
-            now = datetime.utcnow().replace(tzinfo=last_dt.tzinfo)
+            now = datetime.now(timezone.utc)
             elapsed_hours = (now - last_dt).total_seconds() / 3600
 
             if elapsed_hours < min_hours:
