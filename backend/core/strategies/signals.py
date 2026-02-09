@@ -518,8 +518,8 @@ class RealizedVolatilitySignal(SignalGenerator):
                     )
                     returns.append(r)
 
-                # Annualized volatility
-                vol = np.std(returns) * np.sqrt(252)
+                # Annualized volatility (sample std, ddof=1)
+                vol = float(np.std(returns, ddof=1)) * np.sqrt(252) if len(returns) > 1 else 0.0
                 vol_data[symbol] = vol
 
         if not vol_data:
