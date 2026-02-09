@@ -94,9 +94,9 @@ class FredClient:
         self, series_id: str, lookback_days: int
     ) -> list[dict[str, str]]:
         """Fetch a single FRED series."""
-        start_date = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime(
-            "%Y-%m-%d"
-        )
+        start_date = (
+            datetime.now(timezone.utc) - timedelta(days=lookback_days)
+        ).strftime("%Y-%m-%d")
 
         params = {
             "series_id": series_id,

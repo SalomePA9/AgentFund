@@ -229,7 +229,9 @@ async def _store_macro_indicators(
                 "percentile": data.get("percentile"),
                 "rate_of_change": data.get("rate_of_change"),
                 "metadata": {
-                    "mean": float(data["mean"]) if data.get("mean") is not None else None,
+                    "mean": (
+                        float(data["mean"]) if data.get("mean") is not None else None
+                    ),
                     "std": float(data["std"]) if data.get("std") is not None else None,
                 },
                 "recorded_at": now,

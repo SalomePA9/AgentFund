@@ -339,9 +339,7 @@ class DailyReportTemplate(BaseTemplate):
                 if details_raw.get("order_action"):
                     detail_parts.append(details_raw["order_action"])
                 if details_raw.get("target_weight") is not None:
-                    detail_parts.append(
-                        f"weight: {details_raw['target_weight']:.1%}"
-                    )
+                    detail_parts.append(f"weight: {details_raw['target_weight']:.1%}")
                 if details_raw.get("signal_strength") is not None:
                     detail_parts.append(
                         f"signal: {details_raw['signal_strength']:+.0f}"

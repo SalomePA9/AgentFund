@@ -589,9 +589,7 @@ async def generate_report(
         try:
             report = generator.generate_daily_report(context)
         except Exception as e:
-            logger.error(
-                "Failed to generate report for agent %s: %s", agent["id"], e
-            )
+            logger.error("Failed to generate report for agent %s: %s", agent["id"], e)
             if len(agents) == 1:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

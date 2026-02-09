@@ -156,9 +156,13 @@ class ShortInterestClient:
                 score = max(-100.0, min(0.0, score))
 
             return {
-                "short_pct_float": round(short_pct, 2) if short_pct is not None else None,
+                "short_pct_float": (
+                    round(short_pct, 2) if short_pct is not None else None
+                ),
                 "shares_short": shares_short,
-                "short_ratio": round(short_ratio, 2) if short_ratio is not None else None,
+                "short_ratio": (
+                    round(short_ratio, 2) if short_ratio is not None else None
+                ),
                 "float_shares": float_shares,
                 "short_interest_score": round(score, 2),
             }

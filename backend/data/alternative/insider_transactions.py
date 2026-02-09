@@ -113,9 +113,7 @@ class InsiderTransactionClient:
         """Load ticker → CIK mapping from SEC's company_tickers.json."""
         try:
             client = await self._get_client()
-            resp = await client.get(
-                "https://www.sec.gov/files/company_tickers.json"
-            )
+            resp = await client.get("https://www.sec.gov/files/company_tickers.json")
             resp.raise_for_status()
             data = resp.json()
 
