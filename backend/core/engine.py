@@ -28,7 +28,6 @@ from core.sentiment_integration import (
     TemporalSentimentAnalyzer,
 )
 from core.strategies import (
-    SentimentConfig,
     SentimentMode,
     StrategyConfig,
     StrategyOutput,
