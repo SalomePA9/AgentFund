@@ -479,6 +479,14 @@ TODAY'S ACTIVITY
                         detail_parts.append(str(details_raw["reason"]))
                     if details_raw.get("order_action"):
                         detail_parts.append(details_raw["order_action"])
+                    if details_raw.get("target_weight") is not None:
+                        detail_parts.append(
+                            f"weight: {details_raw['target_weight']:.1%}"
+                        )
+                    if details_raw.get("signal_strength") is not None:
+                        detail_parts.append(
+                            f"signal: {details_raw['signal_strength']:+.0f}"
+                        )
                     details = " | ".join(detail_parts) if detail_parts else ""
                 else:
                     details = str(details_raw)
