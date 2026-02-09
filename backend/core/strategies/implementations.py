@@ -368,6 +368,11 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         n_long = max(1, int(n * top_pct / 100))
         n_short = max(1, int(n * bottom_pct / 100)) if allow_short else 0
 
+        # Honour top_n (set by engine from agent's max_positions) as a hard cap
+        top_n = params.get("top_n")
+        if top_n is not None:
+            n_long = min(n_long, int(top_n))
+
         positions = []
 
         # Long positions (top ranked)
