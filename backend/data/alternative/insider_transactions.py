@@ -56,6 +56,22 @@ class InsiderTransactionClient:
 
     def __init__(self):
         self._cik_cache: dict[str, str] = {}
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a shared httpx client for connection pooling."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=15.0,
+                headers={"User-Agent": SEC_USER_AGENT},
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def fetch_insider_signals(
         self,
@@ -73,19 +89,22 @@ class InsiderTransactionClient:
         if not self._cik_cache:
             await self._load_cik_mapping()
 
-        for i, symbol in enumerate(symbols):
-            try:
-                data = await self._fetch_for_symbol(symbol, lookback_days)
-                if data:
-                    results[symbol] = data
-            except Exception:
-                logger.debug(
-                    "Failed to fetch insider data for %s", symbol, exc_info=True
-                )
-            # SEC EDGAR enforces 10 requests/second. Sleep between symbols
-            # to stay well under the rate limit and avoid IP bans.
-            if i < len(symbols) - 1:
-                await asyncio.sleep(0.15)
+        try:
+            for i, symbol in enumerate(symbols):
+                try:
+                    data = await self._fetch_for_symbol(symbol, lookback_days)
+                    if data:
+                        results[symbol] = data
+                except Exception:
+                    logger.debug(
+                        "Failed to fetch insider data for %s", symbol, exc_info=True
+                    )
+                # SEC EDGAR enforces 10 requests/second. Sleep between symbols
+                # to stay well under the rate limit and avoid IP bans.
+                if i < len(symbols) - 1:
+                    await asyncio.sleep(0.15)
+        finally:
+            await self.close()
 
         logger.info(
             "Insider transactions: fetched data for %d/%d symbols",
@@ -97,15 +116,12 @@ class InsiderTransactionClient:
     async def _load_cik_mapping(self) -> None:
         """Load ticker → CIK mapping from SEC's company_tickers.json."""
         try:
-            async with httpx.AsyncClient(
-                timeout=15.0,
-                headers={"User-Agent": SEC_USER_AGENT},
-            ) as client:
-                resp = await client.get(
-                    "https://www.sec.gov/files/company_tickers.json"
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            client = await self._get_client()
+            resp = await client.get(
+                "https://www.sec.gov/files/company_tickers.json"
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
                 for entry in data.values():
                     ticker = entry.get("ticker", "").upper()
@@ -137,13 +153,10 @@ class InsiderTransactionClient:
 
         try:
             url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-            async with httpx.AsyncClient(
-                timeout=15.0,
-                headers={"User-Agent": SEC_USER_AGENT},
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                data = resp.json()
+            client = await self._get_client()
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
 
             # Parse recent Form 4 filings
             recent_filings = data.get("filings", {}).get("recent", {})
@@ -263,13 +276,10 @@ class InsiderTransactionClient:
         )
 
         try:
-            async with httpx.AsyncClient(
-                timeout=10.0,
-                headers={"User-Agent": SEC_USER_AGENT},
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                content = resp.text
+            client = await self._get_client()
+            resp = await client.get(url)
+            resp.raise_for_status()
+            content = resp.text
 
             # Validate that we received XML, not an HTML error page.
             # Form 4 XML documents contain <ownershipDocument>.
