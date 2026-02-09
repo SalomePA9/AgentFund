@@ -329,7 +329,26 @@ class DailyReportTemplate(BaseTemplate):
         for act in data.activities[:5]:
             activity_type = act.get("activity_type", "").upper()
             ticker = act.get("ticker", "")
-            details = act.get("details", "")
+            details_raw = act.get("details", "")
+
+            # Format details dict as readable text instead of raw repr
+            if isinstance(details_raw, dict):
+                detail_parts = []
+                if details_raw.get("reason"):
+                    detail_parts.append(str(details_raw["reason"]))
+                if details_raw.get("order_action"):
+                    detail_parts.append(details_raw["order_action"])
+                if details_raw.get("target_weight") is not None:
+                    detail_parts.append(
+                        f"weight: {details_raw['target_weight']:.1%}"
+                    )
+                if details_raw.get("signal_strength") is not None:
+                    detail_parts.append(
+                        f"signal: {details_raw['signal_strength']:+.0f}"
+                    )
+                details = " | ".join(detail_parts) if detail_parts else ""
+            else:
+                details = str(details_raw)
 
             # Color by activity type
             if activity_type in ["BUY", "ENTRY"]:
@@ -445,7 +464,16 @@ TODAY'S ACTIVITY
             for act in data.activities[:5]:
                 activity_type = act.get("activity_type", "").upper()
                 ticker = act.get("ticker", "")
-                details = act.get("details", "")
+                details_raw = act.get("details", "")
+                if isinstance(details_raw, dict):
+                    detail_parts = []
+                    if details_raw.get("reason"):
+                        detail_parts.append(str(details_raw["reason"]))
+                    if details_raw.get("order_action"):
+                        detail_parts.append(details_raw["order_action"])
+                    details = " | ".join(detail_parts) if detail_parts else ""
+                else:
+                    details = str(details_raw)
                 text += f"[{activity_type}] {ticker} - {details}\n"
 
         text += """
