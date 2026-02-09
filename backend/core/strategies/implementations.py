@@ -265,9 +265,7 @@ class CrossSectionalFactorStrategy(BaseStrategy):
 
         if factors.get("dividend", 0) > 0:
             self.signal_generators.append(
-                DividendYieldSignal(
-                    min_yield=params.get("min_dividend_yield", 0.0)
-                )
+                DividendYieldSignal(min_yield=params.get("min_dividend_yield", 0.0))
             )
             self.factor_weights[SignalType.DIVIDEND_YIELD] = factors["dividend"]
 

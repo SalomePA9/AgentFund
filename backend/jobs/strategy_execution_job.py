@@ -76,7 +76,9 @@ def _fetch_price_history(
 ) -> dict[str, list[float]]:
     """Fetch price history from the price_history table for all symbols."""
     history: dict[str, list[float]] = {s: [] for s in symbols}
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime(
+        "%Y-%m-%d"
+    )
 
     try:
         result = (
@@ -621,7 +623,9 @@ async def sync_positions(
                     if new_shares <= 0:
                         _cancel_gtc_orders(broker, pos_row)
                         update["status"] = "closed"
-                        update["exit_date"] = datetime.now(timezone.utc).date().isoformat()
+                        update["exit_date"] = (
+                            datetime.now(timezone.utc).date().isoformat()
+                        )
                         update["exit_rationale"] = action.reason
                         supabase.table("positions").update(update).eq(
                             "id", pos_row["id"]
@@ -1127,7 +1131,9 @@ async def run_strategy_execution_job() -> dict:
         return {
             "status": "error",
             "error": str(e),
-            "duration_seconds": (datetime.now(timezone.utc) - start_time).total_seconds(),
+            "duration_seconds": (
+                datetime.now(timezone.utc) - start_time
+            ).total_seconds(),
         }
 
 
