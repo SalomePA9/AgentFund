@@ -590,7 +590,7 @@ class ShortTermReversalSignal(SignalGenerator):
         # Calculate z-scores for reversal
         ret_values = list(returns.values())
         mean_ret = np.mean(ret_values)
-        std_ret = np.std(ret_values)
+        std_ret = float(np.std(ret_values, ddof=1)) if len(ret_values) > 1 else 1.0
 
         signals = []
         for symbol, ret in returns.items():
