@@ -271,6 +271,12 @@ class InsiderTransactionClient:
                 resp.raise_for_status()
                 content = resp.text
 
+            # Validate that we received XML, not an HTML error page.
+            # Form 4 XML documents contain <ownershipDocument>.
+            if "<ownershipDocument" not in content and "<?xml" not in content:
+                logger.debug("Filing %s returned non-XML content", accession)
+                return "neutral"
+
             # Parse transactionCode elements from XML
             codes = re.findall(
                 r"<transactionCode>\s*([A-Z])\s*</transactionCode>",
