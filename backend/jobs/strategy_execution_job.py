@@ -15,7 +15,7 @@ Pipeline order:
 import asyncio
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -71,15 +71,19 @@ async def fetch_agent_positions(supabase, agent_id: str) -> list[dict]:
         return []
 
 
-def _fetch_price_history(supabase, symbols: list[str]) -> dict[str, list[float]]:
+def _fetch_price_history(
+    supabase, symbols: list[str], lookback_days: int = 365
+) -> dict[str, list[float]]:
     """Fetch price history from the price_history table for all symbols."""
     history: dict[str, list[float]] = {s: [] for s in symbols}
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
     try:
         result = (
             supabase.table("price_history")
             .select("symbol, date, price")
             .in_("symbol", symbols)
+            .gte("date", cutoff)
             .order("date", desc=False)
             .execute()
         )
