@@ -274,12 +274,22 @@ class StrategyEngine:
                     market_data[sym]["integrated_composite"] = iscore.composite_score
 
             # Step 6: Instantiate and execute strategy.
-            # Disable the strategy-level sentiment overlay because the
-            # 7-layer SentimentFactorIntegrator has already processed
-            # sentiment into integrated_composite scores injected above.
-            # Running both would double-count sentiment and potentially
-            # contradict the integrator's more sophisticated analysis.
-            config.sentiment.mode = SentimentMode.DISABLED
+            # Disable the strategy-level sentiment overlay for
+            # CrossSectionalFactor strategies because the 7-layer
+            # SentimentFactorIntegrator has already processed sentiment
+            # into integrated_composite scores injected above.  Running
+            # both would double-count sentiment.
+            #
+            # Advanced strategies (TrendFollowing, ShortTermReversal,
+            # StatisticalArbitrage, VolatilityPremium) do NOT read
+            # integrated_composite and rely on their own sentiment
+            # overlays (RISK_ADJUSTMENT, CONFIRMATION, ALPHA, FILTER),
+            # so we preserve their designed sentiment modes.  This is
+            # especially important for VolatilityPremium's crisis gate
+            # which requires FILTER mode to halt vol-selling during
+            # market crashes.
+            if config.strategy_type == StrategyType.CROSS_SECTIONAL_FACTOR:
+                config.sentiment.mode = SentimentMode.DISABLED
 
             strategy = StrategyRegistry.create(config)
             output = await strategy.execute(
