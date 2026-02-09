@@ -634,9 +634,13 @@ class AccrualsQualitySignal(SignalGenerator):
             # High accruals score = low quality (reported > cash)
             accrual_proxy = 0.0
             if profit_margin > 0:
-                # ROE/margin ratio: high ratio with high debt = red flag
-                earnings_quality = (
-                    profit_margin / max(0.05, abs(roe)) if roe != 0 else 1.0
+                # ROE/margin ratio: high ratio with high debt = red flag.
+                # Clamped to [0, 3.0] to prevent extreme outliers (e.g.
+                # margin=0.50 / roe=0.05 = 10.0) from dominating the
+                # cross-sectional z-score ranking in small universes.
+                earnings_quality = min(
+                    3.0,
+                    profit_margin / max(0.05, abs(roe)) if roe != 0 else 1.0,
                 )
 
                 # Debt-adjusted: high leverage amplifies accruals risk
