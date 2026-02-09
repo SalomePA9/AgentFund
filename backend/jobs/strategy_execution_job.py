@@ -610,6 +610,20 @@ async def sync_positions(
                         new_shares = max(0, old_shares - float(delta_qty))
 
                     update: dict[str, Any] = {"shares": new_shares}
+
+                    # If shares decreased to zero, close the position to
+                    # prevent ghost positions from affecting future weight
+                    # calculations and portfolio reporting.
+                    if new_shares <= 0:
+                        _cancel_gtc_orders(broker, pos_row)
+                        update["status"] = "closed"
+                        update["exit_date"] = datetime.utcnow().date().isoformat()
+                        update["exit_rationale"] = action.reason
+                        supabase.table("positions").update(update).eq(
+                            "id", pos_row["id"]
+                        ).execute()
+                        continue
+
                     stop_price = None
                     target_price_val = None
                     if rec and rec.stop_loss is not None:
