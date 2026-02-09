@@ -123,13 +123,13 @@ class InsiderTransactionClient:
             resp.raise_for_status()
             data = resp.json()
 
-                for entry in data.values():
-                    ticker = entry.get("ticker", "").upper()
-                    cik = str(entry.get("cik_str", ""))
-                    if ticker and cik:
-                        self._cik_cache[ticker] = cik.zfill(10)
+            for entry in data.values():
+                ticker = entry.get("ticker", "").upper()
+                cik = str(entry.get("cik_str", ""))
+                if ticker and cik:
+                    self._cik_cache[ticker] = cik.zfill(10)
 
-                logger.info("Loaded %d CIK mappings from SEC", len(self._cik_cache))
+            logger.info("Loaded %d CIK mappings from SEC", len(self._cik_cache))
 
         except Exception:
             logger.warning("Failed to load SEC CIK mapping", exc_info=True)

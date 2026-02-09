@@ -123,10 +123,16 @@ class MacroRiskOverlay:
         "insider_breadth": 0.10,
     }
 
-    def __init__(self):
-        """Initialise overlay with config settings."""
-        from config import settings
+    def __init__(self, settings=None):
+        """Initialise overlay with config settings.
 
+        Args:
+            settings: Optional settings object. If not provided, imports
+                from ``config.settings``. Accepting settings as a parameter
+                makes the class testable without requiring sys.path setup.
+        """
+        if settings is None:
+            from config import settings
         self.MIN_SIGNALS_REQUIRED = settings.macro_overlay_min_signals
         self.MIN_SCALE = settings.macro_overlay_min_scale
         self.MAX_SCALE = settings.macro_overlay_max_scale
