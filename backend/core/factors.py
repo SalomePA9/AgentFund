@@ -360,7 +360,7 @@ class FactorCalculator:
         - Dividend yield (60%)
         - 5-year dividend growth (40%)
 
-        Non-dividend payers get score of 0.
+        Non-dividend payers get a neutral score of 50.
         """
         results = {}
 
@@ -380,7 +380,7 @@ class FactorCalculator:
         yield_percentiles = self._to_percentiles(yield_values)
         growth_percentiles = self._to_percentiles(growth_values)
 
-        # Combine scores (non-dividend payers get 0)
+        # Combine scores (non-dividend payers get neutral 50)
         for symbol in market_data:
             div_yield = market_data[symbol].get("dividend_yield", 0)
 

@@ -9,7 +9,7 @@
 1. [System Overview](#1-system-overview)
 2. [How Signals Work](#2-how-signals-work)
 3. [The Five Core Factors](#3-the-five-core-factors)
-4. [The Nine Strategies](#4-the-nine-strategies)
+4. [The Eight Strategies](#4-the-eight-strategies)
    - [4.1 Momentum](#41-momentum)
    - [4.2 Quality Value](#42-quality-value)
    - [4.3 Quality Momentum](#43-quality-momentum)
@@ -36,7 +36,7 @@
 
 ## 1. System Overview
 
-AgentFund is a quantitative trading platform where each user creates **agents** — autonomous trading bots that follow a chosen strategy. Every agent picks one of nine strategies, then the system handles everything: gathering data, scoring stocks, generating trading signals, managing risk, and producing buy/sell recommendations.
+AgentFund is a quantitative trading platform where each user creates **agents** — autonomous trading bots that follow a chosen strategy. Every agent picks one of eight strategies, then the system handles everything: gathering data, scoring stocks, generating trading signals, managing risk, and producing buy/sell recommendations.
 
 ### The Big Picture
 
@@ -176,7 +176,7 @@ Before any strategy runs, the `FactorCalculator` scores every stock on five fund
 **How it's calculated:**
 - **Current dividend yield** (60% weight): Higher yield = higher score
 - **5-year dividend growth rate** (40% weight): Faster growth = higher score
-- Non-dividend-paying stocks receive a score of 0
+- Non-dividend-paying stocks receive a neutral score of 50 (universe median)
 
 **In plain terms:** A stock that pays a 3% yield and has been raising its dividend by 8% per year scores well. This captures both current income and the likelihood that income will grow. Companies that consistently grow dividends tend to be mature, profitable businesses.
 
@@ -196,7 +196,7 @@ The five factors are combined into a single composite score using strategy-speci
 
 ---
 
-## 4. The Nine Strategies
+## 4. The Eight Strategies
 
 AgentFund has two tiers of strategies:
 
