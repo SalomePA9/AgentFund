@@ -23,10 +23,10 @@ from typing import Any
 
 from config import settings
 from core.macro_risk_overlay import MacroRiskOverlay
-from data.macro.fred import FredClient
-from data.macro.volatility_regime import VolatilityRegimeClient
 from data.alternative.insider_transactions import InsiderTransactionClient
 from data.alternative.short_interest import ShortInterestClient
+from data.macro.fred import FredClient
+from data.macro.volatility_regime import VolatilityRegimeClient
 
 logger = logging.getLogger(__name__)
 
