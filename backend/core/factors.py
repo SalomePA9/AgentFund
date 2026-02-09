@@ -389,7 +389,7 @@ class FactorCalculator:
                 growth_score = growth_percentiles.get(symbol, 50)
                 results[symbol] = 0.6 * yield_score + 0.4 * growth_score
             else:
-                results[symbol] = 0  # Non-dividend payers
+                results[symbol] = 50.0  # Non-dividend payers get neutral score
 
         return results
 
