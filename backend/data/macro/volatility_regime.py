@@ -101,7 +101,7 @@ class VolatilityRegimeClient:
 
         # VIX z-score relative to its own recent history
         vix_mean = float(np.mean(vix_arr))
-        vix_std = float(np.std(vix_arr))
+        vix_std = float(np.std(vix_arr, ddof=1))
         vix_z = (vix_current - vix_mean) / vix_std if vix_std > 0 else 0.0
 
         # VIX percentile in lookback window
