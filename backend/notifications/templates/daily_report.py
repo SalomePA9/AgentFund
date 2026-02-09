@@ -189,7 +189,7 @@ class DailyReportTemplate(BaseTemplate):
         regime_colors = {
             "normal": cls.COLORS.get("success", "#22c55e"),
             "elevated_risk": cls.COLORS.get("warning", "#eab308"),
-            "high_risk": cls.COLORS.get("error", "#ef4444"),
+            "high_risk": cls.COLORS.get("danger", "#ef4444"),
         }
         regime_color = regime_colors.get(
             data.macro_regime, cls.COLORS.get("text_primary", "#fff")
@@ -223,7 +223,7 @@ class DailyReportTemplate(BaseTemplate):
                     color = cls.COLORS.get("success", "#22c55e")
                 elif value < -10:
                     sentiment = "bearish"
-                    color = cls.COLORS.get("error", "#ef4444")
+                    color = cls.COLORS.get("danger", "#ef4444")
                 else:
                     sentiment = "neutral"
                     color = cls.COLORS.get("text_secondary", "#a1a1aa")
