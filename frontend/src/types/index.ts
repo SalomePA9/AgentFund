@@ -181,6 +181,21 @@ export interface PerformanceSnapshot {
   vs_benchmark: number;
   sharpe_ratio: number | null;
   max_drawdown: number | null;
+
+  // Macro risk overlay
+  macro_regime?: string | null;
+  macro_scale_factor?: number | null;
+  macro_composite_score?: number | null;
+  macro_warnings?: string[] | null;
+
+  // Individual signal readings
+  credit_spread_signal?: number | null;
+  yield_curve_signal?: number | null;
+  vol_regime_signal?: number | null;
+  vix_level?: number | null;
+  vix_regime?: string | null;
+  seasonality_signal?: number | null;
+  insider_breadth_signal?: number | null;
 }
 
 export interface PositionSnapshot {

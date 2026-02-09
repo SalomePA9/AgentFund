@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from core.factors import FactorCalculator
+from core.macro_risk_overlay import MacroRiskOverlay, OverlayResult
 from core.sentiment_integration import (
     DEFAULT_FACTOR_WEIGHTS,
     SentimentFactorIntegrator,
@@ -129,6 +130,7 @@ class ExecutionResult:
     regime: str = "neutral"
     error: str | None = None
     executed_at: datetime = field(default_factory=datetime.utcnow)
+    macro_overlay: OverlayResult | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +156,11 @@ class StrategyEngine:
         ctx: AgentContext,
         market_data: dict[str, dict[str, Any]] | None = None,
         sentiment_data: dict[str, SentimentInput] | None = None,
+        macro_data: dict[str, Any] | None = None,
+        insider_data: dict[str, dict[str, Any]] | None = None,
+        vol_regime_data: dict[str, Any] | None = None,
+        short_interest_data: dict[str, dict[str, Any]] | None = None,
+        pre_computed_overlay: "OverlayResult | None" = None,
     ) -> ExecutionResult:
         """
         Run the full strategy pipeline for a single agent.
@@ -164,11 +171,19 @@ class StrategyEngine:
         3. Run sentiment-factor integration
         4. Instantiate strategy with sentiment mode
         5. Execute strategy → StrategyOutput with positions
+        6. Apply MacroRiskOverlay to scale position sizes
 
         Args:
             ctx: Agent context with config and current positions.
             market_data: Pre-fetched market data (optional, fetched if None).
             sentiment_data: Pre-fetched sentiment data (optional, fetched if None).
+            macro_data: Pre-fetched FRED macro data (credit spreads, yield curve).
+            insider_data: Pre-fetched insider transaction data per symbol.
+            vol_regime_data: Pre-fetched VIX/volatility regime data.
+            short_interest_data: Pre-fetched short interest data per symbol.
+                Currently stored on ExecutionResult for downstream
+                consumers (reports, logging) but not used by the overlay
+                which operates on portfolio-level macro signals only.
 
         Returns:
             ExecutionResult with position recommendations.
@@ -237,7 +252,7 @@ class StrategyEngine:
                 factor_data, sentiment_data, market_data=market_data
             )
 
-            # Step 4: Build sentiment_data dict for strategy framework
+            # Step 4b: Build sentiment_data dict for strategy framework
             # (the strategy framework expects symbol → {combined, news, social, velocity})
             strategy_sentiment = {}
             for sym, si in sentiment_data.items():
@@ -250,6 +265,10 @@ class StrategyEngine:
 
             # Step 5: Inject integrated composite scores into market_data so
             # strategy.construct_portfolio() can use them for final ranking.
+            # Shallow-copy each stock's dict to avoid mutating the shared
+            # market_data across agents (composite scores are agent-specific
+            # due to different factor weights).
+            market_data = {sym: {**data} for sym, data in market_data.items()}
             for sym, iscore in integrated.items():
                 if sym in market_data:
                     market_data[sym]["integrated_composite"] = iscore.composite_score
@@ -284,6 +303,37 @@ class StrategyEngine:
             # allocated_capital that is still available and scale down
             # new entries proportionally.
             self._constrain_to_cash(output, ctx)
+
+            # Step 6c: Apply MacroRiskOverlay — scale ALL position weights
+            # based on uncorrelated macro signals (credit spreads, VIX
+            # term structure, yield curve, seasonality, insider breadth).
+            # This is the cross-agent risk coordinator that reduces
+            # exposure when multiple uncorrelated signals confirm danger.
+            # Use pre-computed overlay if provided (avoids redundant
+            # computation when shared across agents).
+            if pre_computed_overlay is not None:
+                overlay_result = pre_computed_overlay
+            else:
+                overlay = MacroRiskOverlay()
+                overlay_result = overlay.compute(
+                    macro_data=macro_data,
+                    insider_data=insider_data,
+                    vol_regime_data=vol_regime_data,
+                )
+
+            if overlay_result.risk_scale_factor != 1.0 and output:
+                for pos in output.positions:
+                    pos.target_weight *= overlay_result.risk_scale_factor
+                logger.info(
+                    "Agent %s: macro overlay applied scale=%.2f "
+                    "(regime=%s, composite=%.1f)",
+                    ctx.agent_id,
+                    overlay_result.risk_scale_factor,
+                    overlay_result.regime_label,
+                    overlay_result.composite_risk_score,
+                )
+                for warning in overlay_result.warnings:
+                    logger.warning("Agent %s macro: %s", ctx.agent_id, warning)
 
             # Step 7: Diff recommended positions against current holdings
             # to produce concrete buy/sell/hold order actions.
@@ -358,6 +408,7 @@ class StrategyEngine:
                 integrated_scores=integrated_scores,
                 order_actions=order_actions,
                 regime=regime,
+                macro_overlay=overlay_result,
             )
 
         except Exception as e:

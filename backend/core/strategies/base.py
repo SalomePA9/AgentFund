@@ -51,7 +51,7 @@ Sentiment Integration:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -96,6 +96,20 @@ class SignalType(str, Enum):
     REVERSAL = "reversal"
     DIVIDEND_YIELD = "dividend_yield"
 
+    # -- Uncorrelated / Cross-Asset Signals --
+    CREDIT_SPREAD = "credit_spread"
+    YIELD_CURVE = "yield_curve"
+    VOLATILITY_REGIME = "volatility_regime"
+
+    # -- Alternative Data Signals --
+    INSIDER_TRANSACTIONS = "insider_transactions"
+    SHORT_INTEREST = "short_interest"
+    SEASONALITY = "seasonality"
+
+    # -- Fundamental Regime Signals --
+    EARNINGS_REVISIONS = "earnings_revisions"
+    ACCRUALS_QUALITY = "accruals_quality"
+
 
 class PositionSide(str, Enum):
     """Position direction."""
@@ -139,7 +153,7 @@ class Signal:
     value: float  # Normalized signal value (-1 to 1 or 0 to 100)
     raw_value: float | None  # Original value before normalization
     confidence: float = 1.0  # Signal confidence (0 to 1)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -364,7 +378,7 @@ class BaseStrategy(ABC):
         return StrategyOutput(
             strategy_name=self.config.name,
             strategy_type=self.strategy_type,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             positions=positions,
             signals_used=signals,
             risk_metrics=self._calculate_risk_metrics(positions, market_data),

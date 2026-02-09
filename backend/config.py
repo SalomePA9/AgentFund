@@ -84,6 +84,16 @@ class Settings(BaseSettings):
     finbert_model_name: str = "ProsusAI/finbert"
     finbert_max_length: int = 512
 
+    # FRED API (for macro signals: credit spreads, yield curve)
+    # Free key: https://fred.stlouisfed.org/docs/api/api_key.html
+    fred_api_key: str | None = None
+
+    # Macro Risk Overlay settings
+    macro_overlay_enabled: bool = True
+    macro_overlay_min_signals: int = 2  # Min signals before overlay acts
+    macro_overlay_min_scale: float = 0.25  # Min position scale in crisis
+    macro_overlay_max_scale: float = 1.25  # Max position scale in calm
+
     # Email (Resend)
     resend_api_key: str | None = None
 

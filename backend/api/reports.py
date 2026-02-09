@@ -85,6 +85,110 @@ class GenerateReportResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _fetch_macro_overlay_data(db: Client) -> dict:
+    """Fetch the latest macro risk overlay state and signals from the database."""
+    macro_data: dict = {}
+
+    try:
+        # Latest overlay state
+        overlay_result = (
+            db.table("macro_risk_overlay_state")
+            .select("*")
+            .order("computed_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if overlay_result.data:
+            row = overlay_result.data[0]
+            macro_data["regime"] = row.get("regime_label")
+            macro_data["scale_factor"] = row.get("risk_scale_factor")
+            macro_data["composite_score"] = row.get("composite_risk_score")
+            macro_data["warnings"] = row.get("warnings") or []
+            # Individual signal columns stored directly on the overlay row
+            macro_data["contributions"] = {
+                "credit_spread": row.get("credit_spread_signal"),
+                "yield_curve": row.get("yield_curve_signal"),
+                "vol_regime": row.get("vol_regime_signal"),
+                "seasonality": row.get("seasonality_signal"),
+                "insider_breadth": row.get("insider_breadth_signal"),
+            }
+    except Exception:
+        logger.debug("macro_risk_overlay_state table not available", exc_info=True)
+
+    try:
+        # Latest macro indicators (credit spread, yield curve, VIX)
+        indicators_result = (
+            db.table("macro_indicators")
+            .select("indicator_name, value, z_score, rate_of_change, metadata")
+            .order("recorded_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+        seen = set()
+        for row in indicators_result.data or []:
+            name = row.get("indicator_name")
+            if name and name not in seen:
+                seen.add(name)
+                macro_data[f"indicator_{name}"] = {
+                    "value": row.get("value"),
+                    "z_score": row.get("z_score"),
+                    "roc": row.get("rate_of_change"),
+                    "metadata": row.get("metadata") or {},
+                }
+    except Exception:
+        logger.debug("macro_indicators table not available", exc_info=True)
+
+    return macro_data
+
+
+def _fetch_position_signals(db: Client, tickers: list[str]) -> dict:
+    """Fetch insider and short interest signals for held positions."""
+    signals: dict = {"insider": {}, "short_interest": {}}
+
+    if not tickers:
+        return signals
+
+    try:
+        insider_result = (
+            db.table("insider_signals")
+            .select("symbol, net_sentiment, cluster_score")
+            .in_("symbol", tickers)
+            .order("recorded_at", desc=True)
+            .execute()
+        )
+        seen = set()
+        for row in insider_result.data or []:
+            sym = row.get("symbol")
+            if sym and sym not in seen:
+                seen.add(sym)
+                score = row.get("net_sentiment", 0) or 0
+                if abs(score) > 10:
+                    signals["insider"][sym] = score
+    except Exception:
+        logger.debug("insider_signals table not available", exc_info=True)
+
+    try:
+        si_result = (
+            db.table("short_interest")
+            .select("symbol, short_interest_score")
+            .in_("symbol", tickers)
+            .order("recorded_at", desc=True)
+            .execute()
+        )
+        seen = set()
+        for row in si_result.data or []:
+            sym = row.get("symbol")
+            if sym and sym not in seen:
+                seen.add(sym)
+                score = row.get("short_interest_score", 0) or 0
+                if abs(score) > 20:
+                    signals["short_interest"][sym] = score
+    except Exception:
+        logger.debug("short_interest table not available", exc_info=True)
+
+    return signals
+
+
 def _build_agent_context(
     agent: dict, db: Client, report_date: date | None = None
 ) -> AgentContext:
@@ -133,6 +237,39 @@ def _build_agent_context(
     else:
         days_active = 0
 
+    # Fetch macro overlay data
+    macro = _fetch_macro_overlay_data(db)
+
+    # Derive individual signal scores from overlay contributions or indicators
+    credit_signal = None
+    yield_signal = None
+    vol_signal = None
+    vix_level = None
+    vix_regime = None
+    seasonality_signal = None
+    insider_breadth_signal = None
+
+    contributions = macro.get("contributions", {})
+    if contributions:
+        credit_signal = contributions.get("credit_spread")
+        yield_signal = contributions.get("yield_curve")
+        vol_signal = contributions.get("vol_regime")
+        seasonality_signal = contributions.get("seasonality")
+        insider_breadth_signal = contributions.get("insider_breadth")
+
+    # Get VIX details from indicators
+    vix_indicator = macro.get("indicator_vix")
+    if vix_indicator:
+        vix_level = vix_indicator.get("value")
+        meta = vix_indicator.get("metadata", {})
+        vix_regime = meta.get("regime_label")
+
+    # Fetch per-position uncorrelated signals
+    held_tickers = [
+        p.get("ticker", "") for p in (positions_result.data or []) if p.get("ticker")
+    ]
+    position_signals = _fetch_position_signals(db, held_tickers)
+
     return AgentContext(
         agent_id=agent_id,
         agent_name=agent["name"],
@@ -150,6 +287,20 @@ def _build_agent_context(
         activities=activity_result.data or [],
         report_date=target_date,
         days_active=days_active,
+        # Macro overlay
+        macro_regime=macro.get("regime"),
+        macro_scale_factor=macro.get("scale_factor"),
+        macro_composite_score=macro.get("composite_score"),
+        macro_warnings=macro.get("warnings"),
+        credit_spread_signal=credit_signal,
+        yield_curve_signal=yield_signal,
+        vol_regime_signal=vol_signal,
+        vix_level=vix_level,
+        vix_regime=vix_regime,
+        seasonality_signal=seasonality_signal,
+        insider_breadth_signal=insider_breadth_signal,
+        insider_signals=position_signals.get("insider"),
+        short_interest_signals=position_signals.get("short_interest"),
     )
 
 
@@ -427,72 +578,77 @@ async def generate_report(
             status="skipped",
         )
 
-    # Generate report for first/specified agent
-    agent = agents[0]
-    context = _build_agent_context(agent, db, target_date)
-
+    # Generate reports for all agents (or the specified one)
     generator = get_report_generator()
-    try:
-        report = generator.generate_daily_report(context)
-    except Exception as e:
-        logger.error(f"Failed to generate report: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Report generation failed: {str(e)}",
-        )
+    last_saved_report = None
+    generated_count = 0
 
-    # Save report to database
-    report_data = {
-        "agent_id": agent["id"],
-        "report_date": report.report_date.isoformat(),
-        "report_content": report.content,
-        "performance_snapshot": report.performance_snapshot,
-        "positions_snapshot": report.positions_snapshot,
-        "actions_taken": report.actions_taken,
-    }
+    for agent in agents:
+        context = _build_agent_context(agent, db, target_date)
 
-    # Upsert (update if exists for same date)
-    existing = (
-        db.table("daily_reports")
-        .select("id")
-        .eq("agent_id", agent["id"])
-        .eq("report_date", target_date.isoformat())
-        .execute()
-    )
+        try:
+            report = generator.generate_daily_report(context)
+        except Exception as e:
+            logger.error("Failed to generate report for agent %s: %s", agent["id"], e)
+            if len(agents) == 1:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Report generation failed: {str(e)}",
+                )
+            continue
 
-    if existing.data:
-        # Update existing report
-        result = (
+        # Save report to database
+        report_data = {
+            "agent_id": agent["id"],
+            "report_date": report.report_date.isoformat(),
+            "report_content": report.content,
+            "performance_snapshot": report.performance_snapshot,
+            "positions_snapshot": report.positions_snapshot,
+            "actions_taken": report.actions_taken,
+        }
+
+        # Upsert (update if exists for same date)
+        existing = (
             db.table("daily_reports")
-            .update(report_data)
-            .eq("id", existing.data[0]["id"])
+            .select("id")
+            .eq("agent_id", agent["id"])
+            .eq("report_date", target_date.isoformat())
             .execute()
         )
-    else:
-        # Insert new report
-        result = db.table("daily_reports").insert(report_data).execute()
 
-    if not result.data:
+        if existing.data:
+            result = (
+                db.table("daily_reports")
+                .update(report_data)
+                .eq("id", existing.data[0]["id"])
+                .execute()
+            )
+        else:
+            result = db.table("daily_reports").insert(report_data).execute()
+
+        if result.data:
+            last_saved_report = result.data[0]
+            generated_count += 1
+
+    if not last_saved_report:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to save report",
+            detail="Failed to save any reports",
         )
 
-    saved_report = result.data[0]
-
     return GenerateReportResponse(
-        message="Report generated successfully",
-        agent_id=agent["id"],
+        message=f"Generated {generated_count} report(s) successfully",
+        agent_id=str(agent_id) if agent_id else None,
         report_date=target_date,
         status="completed",
         report=ReportResponse(
-            id=saved_report["id"],
-            agent_id=saved_report["agent_id"],
-            report_date=saved_report["report_date"],
-            report_content=saved_report["report_content"],
-            performance_snapshot=saved_report["performance_snapshot"],
-            positions_snapshot=saved_report["positions_snapshot"],
-            actions_taken=saved_report["actions_taken"],
-            created_at=saved_report["created_at"],
+            id=last_saved_report["id"],
+            agent_id=last_saved_report["agent_id"],
+            report_date=last_saved_report["report_date"],
+            report_content=last_saved_report["report_content"],
+            performance_snapshot=last_saved_report["performance_snapshot"],
+            positions_snapshot=last_saved_report["positions_snapshot"],
+            actions_taken=last_saved_report["actions_taken"],
+            created_at=last_saved_report["created_at"],
         ),
     )

@@ -2,19 +2,20 @@
 Strategy Execution Job
 
 Runs the strategy execution engine for all active agents.
-Scheduled after factor scoring and sentiment jobs complete.
+Scheduled after factor scoring, sentiment, and macro data jobs complete.
 
 Pipeline order:
   1. market_data_job   — fetch prices, fundamentals, technicals
   2. sentiment_job     — analyse news + social sentiment
-  3. factor_scoring_job — calculate factor scores + sentiment integration
-  4. strategy_execution_job (this) — run strategies, generate positions
+  3. macro_data_job    — FRED, VIX, insider, short interest (uncorrelated signals)
+  4. factor_scoring_job — calculate factor scores + sentiment integration
+  5. strategy_execution_job (this) — run strategies with macro overlay
 """
 
 import asyncio
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -70,15 +71,19 @@ async def fetch_agent_positions(supabase, agent_id: str) -> list[dict]:
         return []
 
 
-def _fetch_price_history(supabase, symbols: list[str]) -> dict[str, list[float]]:
+def _fetch_price_history(
+    supabase, symbols: list[str], lookback_days: int = 365
+) -> dict[str, list[float]]:
     """Fetch price history from the price_history table for all symbols."""
     history: dict[str, list[float]] = {s: [] for s in symbols}
+    cutoff = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
     try:
         result = (
             supabase.table("price_history")
             .select("symbol, date, price")
             .in_("symbol", symbols)
+            .gte("date", cutoff)
             .order("date", desc=False)
             .execute()
         )
@@ -534,7 +539,7 @@ async def sync_positions(
                         qty=float(qty),
                         stop_price=stop_price,
                         target_price=target_price_val,
-                        side=rec.side.value if rec else "long",
+                        side=rec.side.value if rec and rec.side else "long",
                     )
                     if bracket_ids.get("stop_order_id"):
                         row["stop_order_id"] = bracket_ids["stop_order_id"]
@@ -609,6 +614,20 @@ async def sync_positions(
                         new_shares = max(0, old_shares - float(delta_qty))
 
                     update: dict[str, Any] = {"shares": new_shares}
+
+                    # If shares decreased to zero, close the position to
+                    # prevent ghost positions from affecting future weight
+                    # calculations and portfolio reporting.
+                    if new_shares <= 0:
+                        _cancel_gtc_orders(broker, pos_row)
+                        update["status"] = "closed"
+                        update["exit_date"] = datetime.utcnow().date().isoformat()
+                        update["exit_rationale"] = action.reason
+                        supabase.table("positions").update(update).eq(
+                            "id", pos_row["id"]
+                        ).execute()
+                        continue
+
                     stop_price = None
                     target_price_val = None
                     if rec and rec.stop_loss is not None:
@@ -628,7 +647,7 @@ async def sync_positions(
                             qty=new_shares,
                             stop_price=stop_price,
                             target_price=target_price_val,
-                            side=rec.side.value if rec else "long",
+                            side=rec.side.value if rec and rec.side else "long",
                         )
                         if bracket_ids.get("stop_order_id"):
                             update["stop_order_id"] = bracket_ids["stop_order_id"]
@@ -803,6 +822,139 @@ async def save_execution_result(
 # ---------------------------------------------------------------------------
 
 
+async def _fetch_macro_overlay_data(
+    supabase,
+) -> tuple[dict, dict, dict, dict]:
+    """
+    Fetch the latest macro and alternative data for the MacroRiskOverlay.
+
+    Reads the most recent values from the macro_indicators, insider_signals,
+    and short_interest tables populated by macro_data_job.  Also fetches
+    fresh VIX data directly (fast, free, no API key).
+
+    Returns (macro_data, insider_data, vol_regime_data, short_interest_data).
+    """
+    from config import settings
+
+    macro_data: dict = {}
+    insider_data: dict = {}
+    vol_regime_data: dict = {}
+    short_interest_data: dict = {}
+
+    if not settings.macro_overlay_enabled:
+        logger.info("Macro overlay disabled — skipping macro data fetch")
+        return macro_data, insider_data, vol_regime_data, short_interest_data
+
+    # Fetch FRED macro indicators from DB (populated by macro_data_job)
+    try:
+        result = (
+            supabase.table("macro_indicators")
+            .select("*")
+            .order("recorded_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+        for row in result.data:
+            name = row.get("indicator_name")
+            if name and name not in macro_data:
+                macro_data[name] = {
+                    "current": float(row["value"]) if row.get("value") else None,
+                    "z_score": float(row["z_score"]) if row.get("z_score") else 0.0,
+                    "percentile": (
+                        float(row["percentile"]) if row.get("percentile") else 50.0
+                    ),
+                    "rate_of_change": (
+                        float(row["rate_of_change"])
+                        if row.get("rate_of_change")
+                        else 0.0
+                    ),
+                }
+        logger.info("Loaded %d macro indicators from DB", len(macro_data))
+    except Exception:
+        logger.warning(
+            "Failed to fetch macro indicators — overlay will be partial", exc_info=True
+        )
+
+    # Fetch VIX data (fast, always fresh)
+    try:
+        from data.macro.volatility_regime import VolatilityRegimeClient
+
+        vol_client = VolatilityRegimeClient()
+        vol_regime_data = await vol_client.fetch_regime(lookback_days=60)
+        logger.info(
+            "VIX regime: %s (score=%.2f)",
+            vol_regime_data.get("regime_label"),
+            vol_regime_data.get("regime_score", 0),
+        )
+    except Exception:
+        logger.warning("Failed to fetch VIX data", exc_info=True)
+
+    # Fetch insider signals from DB
+    try:
+        result = (
+            supabase.table("insider_signals")
+            .select("symbol, net_sentiment, cluster_score, buy_ratio, filing_count")
+            .order("recorded_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        seen = set()
+        for row in result.data:
+            sym = row.get("symbol")
+            if sym and sym not in seen:
+                seen.add(sym)
+                insider_data[sym] = {
+                    "net_sentiment": (
+                        float(row["net_sentiment"]) if row.get("net_sentiment") else 0
+                    ),
+                    "cluster_score": (
+                        float(row["cluster_score"]) if row.get("cluster_score") else 0
+                    ),
+                    "buy_ratio": (
+                        float(row["buy_ratio"]) if row.get("buy_ratio") else 0.5
+                    ),
+                    "filing_count": row.get("filing_count", 0),
+                }
+        logger.info("Loaded insider signals for %d symbols", len(insider_data))
+    except Exception:
+        logger.warning("Failed to fetch insider signals", exc_info=True)
+
+    # Fetch short interest from DB
+    try:
+        result = (
+            supabase.table("short_interest")
+            .select("symbol, short_pct_float, short_ratio, short_interest_score")
+            .order("recorded_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        seen = set()
+        for row in result.data:
+            sym = row.get("symbol")
+            if sym and sym not in seen:
+                seen.add(sym)
+                short_interest_data[sym] = {
+                    "short_pct_float": (
+                        float(row["short_pct_float"])
+                        if row.get("short_pct_float")
+                        else None
+                    ),
+                    "short_ratio": (
+                        float(row["short_ratio"]) if row.get("short_ratio") else None
+                    ),
+                    "short_interest_score": (
+                        float(row["short_interest_score"])
+                        if row.get("short_interest_score")
+                        else 0
+                    ),
+                }
+        logger.info("Loaded short interest for %d symbols", len(short_interest_data))
+    except Exception:
+        logger.warning("Failed to fetch short interest", exc_info=True)
+
+    return macro_data, insider_data, vol_regime_data, short_interest_data
+
+
 async def run_strategy_execution_job() -> dict:
     """
     Main entry point for strategy execution job.
@@ -837,6 +989,31 @@ async def run_strategy_execution_job() -> dict:
             f"{sum(1 for s in sentiment_data.values() if s.combined_sentiment is not None)} with sentiment"
         )
 
+        # Fetch macro + alternative data for the MacroRiskOverlay
+        # These are pre-fetched once and shared across all agents.
+        macro_data, insider_data, vol_regime_data, short_interest_data = (
+            await _fetch_macro_overlay_data(supabase)
+        )
+
+        # Pre-compute MacroRiskOverlay once (deterministic for all agents)
+        from core.macro_risk_overlay import MacroRiskOverlay
+
+        pre_overlay = None
+        try:
+            overlay = MacroRiskOverlay()
+            pre_overlay = overlay.compute(
+                macro_data=macro_data,
+                insider_data=insider_data,
+                vol_regime_data=vol_regime_data,
+            )
+            logger.info(
+                "Pre-computed overlay: scale=%.2f regime=%s",
+                pre_overlay.risk_scale_factor,
+                pre_overlay.regime_label,
+            )
+        except Exception:
+            logger.warning("Failed to pre-compute overlay", exc_info=True)
+
         # Execute strategy for each agent
         engine = StrategyEngine(db_client=supabase)
         results: list[ExecutionResult] = []
@@ -859,9 +1036,16 @@ async def run_strategy_execution_job() -> dict:
                 current_positions=positions,
             )
 
-            # Run strategy
+            # Run strategy with macro overlay data
             result = await engine.execute_for_agent(
-                ctx, market_data=market_data, sentiment_data=sentiment_data
+                ctx,
+                market_data=market_data,
+                sentiment_data=sentiment_data,
+                macro_data=macro_data,
+                insider_data=insider_data,
+                vol_regime_data=vol_regime_data,
+                short_interest_data=short_interest_data,
+                pre_computed_overlay=pre_overlay,
             )
             results.append(result)
 
@@ -905,9 +1089,16 @@ async def run_strategy_execution_job() -> dict:
                     if result.strategy_output
                     else 0
                 )
+                overlay_info = ""
+                if result.macro_overlay:
+                    overlay_info = (
+                        f" | macro_scale={result.macro_overlay.risk_scale_factor:.2f}"
+                        f" macro_regime={result.macro_overlay.regime_label}"
+                    )
                 logger.info(
                     f"Agent {agent_id} ({agent.get('name', '?')}): "
-                    f"{pos_count} positions, {len(orders)} orders | regime={result.regime}"
+                    f"{pos_count} positions, {len(orders)} orders | "
+                    f"regime={result.regime}{overlay_info}"
                 )
 
         end_time = datetime.utcnow()

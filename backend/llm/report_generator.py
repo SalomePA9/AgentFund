@@ -46,6 +46,25 @@ class AgentContext:
     report_date: date | None = None
     days_active: int = 0
 
+    # Macro risk overlay context
+    macro_regime: str | None = None  # e.g. "normal", "elevated_risk", "high_risk"
+    macro_scale_factor: float | None = None  # 0.25 to 1.25
+    macro_composite_score: float | None = None  # -100 to +100
+    macro_warnings: list[str] | None = None
+
+    # Individual macro signal readings
+    credit_spread_signal: float | None = None
+    yield_curve_signal: float | None = None
+    vol_regime_signal: float | None = None
+    vix_level: float | None = None
+    vix_regime: str | None = None  # "calm", "elevated", "crisis"
+    seasonality_signal: float | None = None
+    insider_breadth_signal: float | None = None
+
+    # Per-position uncorrelated signals (symbol → score)
+    insider_signals: dict[str, float] | None = None
+    short_interest_signals: dict[str, float] | None = None
+
 
 @dataclass
 class GeneratedReport:
@@ -112,8 +131,8 @@ class ReportGenerator:
         for pos in ctx.positions[:10]:  # Limit to 10 positions
             ticker = pos.get("ticker", "???")
             shares = pos.get("shares", 0)
-            entry = pos.get("entry_price", 0)
-            current = pos.get("current_price", entry)
+            entry = pos.get("entry_price") or 0
+            current = pos.get("current_price") or entry
             pnl_pct = ((current / entry) - 1) * 100 if entry > 0 else 0
 
             lines.append(
@@ -123,6 +142,102 @@ class ReportGenerator:
 
         if len(ctx.positions) > 10:
             lines.append(f"  ... and {len(ctx.positions) - 10} more positions")
+
+        return "\n".join(lines)
+
+    def _build_macro_summary(self, ctx: AgentContext) -> str:
+        """Build macro risk overlay and uncorrelated signals summary for the prompt."""
+        lines: list[str] = []
+
+        # Macro overlay headline
+        if ctx.macro_regime:
+            regime_display = ctx.macro_regime.replace("_", " ").title()
+            lines.append(f"Macro Regime: {regime_display}")
+        if ctx.macro_scale_factor is not None:
+            pct_adj = (ctx.macro_scale_factor - 1.0) * 100
+            direction = "reduced" if pct_adj < 0 else "increased"
+            lines.append(
+                f"Position Size Adjustment: {direction} by {abs(pct_adj):.1f}% "
+                f"(scale factor {ctx.macro_scale_factor:.2f})"
+            )
+        if ctx.macro_composite_score is not None:
+            lines.append(
+                f"Macro Composite Score: {ctx.macro_composite_score:+.1f} / 100"
+            )
+
+        # Individual signals
+        signal_lines: list[str] = []
+        if ctx.credit_spread_signal is not None:
+            label = (
+                "bullish"
+                if ctx.credit_spread_signal > 10
+                else ("bearish" if ctx.credit_spread_signal < -10 else "neutral")
+            )
+            signal_lines.append(
+                f"  Credit Spreads: {ctx.credit_spread_signal:+.0f} ({label})"
+            )
+        if ctx.yield_curve_signal is not None:
+            label = (
+                "bullish"
+                if ctx.yield_curve_signal > 10
+                else ("bearish" if ctx.yield_curve_signal < -10 else "neutral")
+            )
+            signal_lines.append(
+                f"  Yield Curve (10Y-2Y): {ctx.yield_curve_signal:+.0f} ({label})"
+            )
+        if ctx.vol_regime_signal is not None:
+            vix_str = f", VIX at {ctx.vix_level:.1f}" if ctx.vix_level else ""
+            regime_str = f" [{ctx.vix_regime}]" if ctx.vix_regime else ""
+            signal_lines.append(
+                f"  Volatility Regime: {ctx.vol_regime_signal:+.0f}{regime_str}{vix_str}"
+            )
+        if ctx.seasonality_signal is not None:
+            signal_lines.append(f"  Seasonality: {ctx.seasonality_signal:+.0f}")
+        if ctx.insider_breadth_signal is not None:
+            signal_lines.append(f"  Insider Breadth: {ctx.insider_breadth_signal:+.0f}")
+
+        if signal_lines:
+            lines.append("Signal Readings:")
+            lines.extend(signal_lines)
+
+        # Macro warnings
+        if ctx.macro_warnings:
+            lines.append("Warnings:")
+            for w in ctx.macro_warnings:
+                lines.append(f"  - {w}")
+
+        # Per-position uncorrelated signals
+        position_signals: list[str] = []
+        if ctx.insider_signals:
+            for sym, score in sorted(
+                ctx.insider_signals.items(), key=lambda x: abs(x[1]), reverse=True
+            )[:5]:
+                direction = "buying" if score > 0 else "selling"
+                position_signals.append(
+                    f"  {sym}: insider {direction} (score {score:+.0f})"
+                )
+        if ctx.short_interest_signals:
+            for sym, score in sorted(
+                ctx.short_interest_signals.items(),
+                key=lambda x: abs(x[1]),
+                reverse=True,
+            )[:5]:
+                if abs(score) > 20:
+                    level = (
+                        "extreme"
+                        if abs(score) > 70
+                        else ("high" if abs(score) > 40 else "elevated")
+                    )
+                    position_signals.append(
+                        f"  {sym}: {level} short interest (score {score:+.0f})"
+                    )
+
+        if position_signals:
+            lines.append("Notable Stock-Level Signals:")
+            lines.extend(position_signals)
+
+        if not lines:
+            return "Macro overlay data not available."
 
         return "\n".join(lines)
 
@@ -190,7 +305,13 @@ You are {context.agent_name}, a {context.strategy_type.replace('_', ' ')} tradin
 
 Generate a daily report for {report_date.strftime('%B %d, %Y')}.
 The report should be engaging, informative, and match your persona's style.
-Keep it concise but insightful - aim for 150-300 words."""
+Keep it concise but insightful - aim for 200-400 words.
+
+IMPORTANT: You have access to macro risk overlay data and uncorrelated signal readings.
+Integrate these into your analysis naturally — explain how market conditions (credit spreads,
+VIX, yield curve) are affecting your positioning, and mention any notable stock-level signals
+(insider buying/selling, short interest) for your held positions. If the macro overlay has
+reduced or increased your position sizes, explain why in terms the reader can understand."""
 
         # Build the user message with context
         performance = self._build_performance_summary(context)
@@ -204,6 +325,7 @@ Keep it concise but insightful - aim for 150-300 words."""
             if include_activity
             else "Activity details not included."
         )
+        macro = self._build_macro_summary(context)
 
         user_message = f"""Generate my daily report based on today's data:
 
@@ -214,7 +336,11 @@ PERFORMANCE:
 
 {activity}
 
-Write the report in first person as {context.agent_name}."""
+MACRO RISK OVERLAY & UNCORRELATED SIGNALS:
+{macro}
+
+Write the report in first person as {context.agent_name}. Weave the macro overlay and
+uncorrelated signal context into the narrative — don't just list the numbers."""
 
         # Generate report
         try:
@@ -222,7 +348,7 @@ Write the report in first person as {context.agent_name}."""
                 messages=[{"role": "user", "content": user_message}],
                 system=system_prompt,
                 model=self.REPORT_MODEL,
-                max_tokens=1024,
+                max_tokens=1536,
                 temperature=0.7,
                 use_cache=False,  # Reports should be fresh
             )
@@ -241,10 +367,25 @@ Write the report in first person as {context.agent_name}."""
                     "allocated_capital": context.allocated_capital,
                     "daily_return_pct": context.daily_return_pct,
                     "total_return_pct": context.total_return_pct,
+                    "daily_return": round(
+                        context.total_value * context.daily_return_pct / 100, 2
+                    ),
+                    "vs_benchmark": None,  # Populated by caller when benchmark data available
                     "sharpe_ratio": context.sharpe_ratio,
                     "max_drawdown": context.max_drawdown,
                     "win_rate": context.win_rate,
                     "positions_count": context.positions_count,
+                    "macro_regime": context.macro_regime,
+                    "macro_scale_factor": context.macro_scale_factor,
+                    "macro_composite_score": context.macro_composite_score,
+                    "macro_warnings": context.macro_warnings,
+                    "credit_spread_signal": context.credit_spread_signal,
+                    "yield_curve_signal": context.yield_curve_signal,
+                    "vol_regime_signal": context.vol_regime_signal,
+                    "vix_level": context.vix_level,
+                    "vix_regime": context.vix_regime,
+                    "seasonality_signal": context.seasonality_signal,
+                    "insider_breadth_signal": context.insider_breadth_signal,
                 },
                 positions_snapshot=context.positions or [],
                 actions_taken=context.activities or [],
