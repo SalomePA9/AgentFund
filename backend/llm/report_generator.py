@@ -131,8 +131,8 @@ class ReportGenerator:
         for pos in ctx.positions[:10]:  # Limit to 10 positions
             ticker = pos.get("ticker", "???")
             shares = pos.get("shares", 0)
-            entry = pos.get("entry_price", 0)
-            current = pos.get("current_price", entry)
+            entry = pos.get("entry_price") or 0
+            current = pos.get("current_price") or entry
             pnl_pct = ((current / entry) - 1) * 100 if entry > 0 else 0
 
             lines.append(

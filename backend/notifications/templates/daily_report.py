@@ -284,8 +284,8 @@ class DailyReportTemplate(BaseTemplate):
         for pos in data.positions[:5]:
             ticker = pos.get("ticker", "???")
             shares = pos.get("shares", 0)
-            entry_price = pos.get("entry_price", 0)
-            current_price = pos.get("current_price", 0)
+            entry_price = pos.get("entry_price") or 0
+            current_price = pos.get("current_price") or 0
             pnl_pct = pos.get("unrealized_pnl_pct", 0)
 
             rows.append(f"""
