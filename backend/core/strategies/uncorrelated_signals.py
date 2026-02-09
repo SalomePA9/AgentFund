@@ -550,8 +550,11 @@ class EarningsRevisionsSignal(SignalGenerator):
                 # sustainability; low margin suggests downward revision risk.
                 margin = data.get("profit_margin")
                 if margin is not None:
-                    # Compare margin to a baseline (10%): above = positive revision
-                    revision = (margin - 0.10) / 0.10
+                    # Compare margin to a baseline (10%): above = positive revision.
+                    # Clamp to [-0.5, 0.5] to match the forward-EPS path's
+                    # typical range and prevent margin-based stocks from
+                    # dominating the cross-sectional z-score ranking.
+                    revision = max(-0.5, min(0.5, (margin - 0.10) / 0.10))
                     revision_data[symbol] = revision
 
         if not revision_data:
