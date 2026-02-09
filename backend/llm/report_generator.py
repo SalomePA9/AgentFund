@@ -367,6 +367,10 @@ uncorrelated signal context into the narrative — don't just list the numbers."
                     "allocated_capital": context.allocated_capital,
                     "daily_return_pct": context.daily_return_pct,
                     "total_return_pct": context.total_return_pct,
+                    "daily_return": round(
+                        context.total_value * context.daily_return_pct / 100, 2
+                    ),
+                    "vs_benchmark": None,  # Populated by caller when benchmark data available
                     "sharpe_ratio": context.sharpe_ratio,
                     "max_drawdown": context.max_drawdown,
                     "win_rate": context.win_rate,
