@@ -18,7 +18,7 @@ the overlay state is available when strategies execute.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from config import settings
@@ -46,7 +46,7 @@ async def run_macro_data_job(
     Returns:
         Job summary dictionary.
     """
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     logger.info("Starting macro data collection job")
 
     summary: dict[str, Any] = {
@@ -180,7 +180,7 @@ async def run_macro_data_job(
     # ---------------------------------------------------------------
     # Summary
     # ---------------------------------------------------------------
-    end_time = datetime.utcnow()
+    end_time = datetime.now(timezone.utc)
     summary["end_time"] = end_time.isoformat()
     summary["duration_seconds"] = round((end_time - start_time).total_seconds(), 2)
 
@@ -214,7 +214,7 @@ async def _store_macro_indicators(
     db_client: Any, fred_data: dict[str, dict[str, Any]]
 ) -> None:
     """Store FRED macro indicator values."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     rows = []
 
     for name, data in fred_data.items():
@@ -245,7 +245,7 @@ async def _store_macro_indicators(
 
 async def _store_vix_indicator(db_client: Any, vol_data: dict[str, Any]) -> None:
     """Store VIX regime data as a macro indicator."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         db_client.table("macro_indicators").upsert(
             {
@@ -273,7 +273,7 @@ async def _store_insider_signals(
     db_client: Any, insider_data: dict[str, dict[str, Any]]
 ) -> None:
     """Store insider signals and update stocks table."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     rows = []
     stock_updates = []
 
@@ -315,7 +315,7 @@ async def _store_short_interest(
     db_client: Any, si_data: dict[str, dict[str, Any]]
 ) -> None:
     """Store short interest and update stocks table."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     rows = []
     stock_updates = []
 
@@ -374,7 +374,7 @@ async def _store_overlay_state(db_client: Any, result: Any) -> None:
                     snapshot.insider_breadth_signal if snapshot else None
                 ),
                 "warnings": result.warnings,
-                "computed_at": datetime.utcnow().isoformat(),
+                "computed_at": datetime.now(timezone.utc).isoformat(),
             }
         ).execute()
     except Exception:
