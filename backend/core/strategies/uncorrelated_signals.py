@@ -665,7 +665,7 @@ class AccrualsQualitySignal(SignalGenerator):
         # Cross-sectional ranking: high quality (low accruals) = positive signal
         all_values = list(accrual_data.values())
         mean_val = float(np.mean(all_values))
-        std_val = float(np.std(all_values)) if len(all_values) > 1 else 1.0
+        std_val = float(np.std(all_values, ddof=1)) if len(all_values) > 1 else 1.0
 
         signals = []
         for symbol, accrual in accrual_data.items():
