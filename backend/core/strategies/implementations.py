@@ -31,6 +31,7 @@ from core.strategies.base import (
 )
 from core.strategies.signals import (
     CrossSectionalMomentumSignal,
+    DividendYieldSignal,
     NewsSentimentSignal,
     QualitySignal,
     RealizedVolatilitySignal,
@@ -261,6 +262,14 @@ class CrossSectionalFactorStrategy(BaseStrategy):
         if factors.get("low_vol", 0) > 0:
             self.signal_generators.append(RealizedVolatilitySignal())
             self.factor_weights[SignalType.REALIZED_VOLATILITY] = factors["low_vol"]
+
+        if factors.get("dividend", 0) > 0:
+            self.signal_generators.append(
+                DividendYieldSignal(
+                    min_yield=params.get("min_dividend_yield", 0.0)
+                )
+            )
+            self.factor_weights[SignalType.DIVIDEND_YIELD] = factors["dividend"]
 
         # Add sentiment if enabled
         if self.config.sentiment.mode == SentimentMode.ALPHA:
