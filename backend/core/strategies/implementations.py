@@ -168,6 +168,12 @@ class TrendFollowingStrategy(BaseStrategy):
             else:
                 weight = abs(mom_signal.value) / 100 * 0.05  # Default 5% base
 
+            # Apply signal confidence to weight.  The sentiment overlay
+            # (RISK_ADJUSTMENT mode) adjusts confidence by ±20% based on
+            # sentiment-trend alignment — aligned sentiment increases
+            # position size, divergent sentiment reduces it.
+            weight *= mom_signal.confidence
+
             # Cap at max position size
             weight = min(weight, self.config.risk.max_position_size)
 
