@@ -101,9 +101,19 @@ class ShortInterestClient:
             if short_pct is None and shares_short is None:
                 return None
 
+            # Derive short_pct from components when yfinance doesn't
+            # provide shortPercentOfFloat directly.
+            if (
+                short_pct is None
+                and shares_short is not None
+                and float_shares is not None
+                and float_shares > 0
+            ):
+                short_pct = (shares_short / float_shares) * 100
+
             # yfinance returns shortPercentOfFloat as a decimal fraction
             # (e.g. 0.03 = 3%). Always convert to percentage.
-            if short_pct is not None:
+            elif short_pct is not None:
                 if (
                     shares_short is not None
                     and float_shares is not None
