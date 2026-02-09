@@ -362,7 +362,7 @@ class ShortInterestSignal(SignalGenerator):
         # Cross-sectional ranking: compare each stock's SI to the universe
         all_scores = list(raw_scores.values())
         mean_score = float(np.mean(all_scores))
-        std_score = float(np.std(all_scores)) if len(all_scores) > 1 else 1.0
+        std_score = float(np.std(all_scores, ddof=1)) if len(all_scores) > 1 else 1.0
 
         signals = []
         for symbol, score in raw_scores.items():
