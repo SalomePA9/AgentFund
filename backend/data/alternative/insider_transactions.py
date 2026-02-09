@@ -29,10 +29,6 @@ logger = logging.getLogger(__name__)
 # SEC requires a User-Agent header identifying the requester
 SEC_USER_AGENT = "AgentFund Research contact@agentfund.ai"
 
-# CIK lookup for common tickers (subset — full mapping should be loaded from
-# the SEC's company_tickers.json file at startup)
-_CIK_CACHE: dict[str, str] = {}
-
 
 class InsiderTransactionClient:
     """
