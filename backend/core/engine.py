@@ -470,6 +470,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=(
                             f"Stop-loss breached: price {current_price:.2f} "
                             f"{'<=' if side == 'long' else '>='} stop {stop:.2f}"
@@ -529,6 +530,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=(
                             f"Take-profit reached: price {current_price:.2f} "
                             f"{'≥' if side == 'long' else '≤'} target {target:.2f}"
@@ -585,6 +587,7 @@ class StrategyEngine:
                         action="sell",
                         target_weight=0.0,
                         current_weight=float(pos.get("target_weight", 0) or 0),
+                        signal_strength=100.0,
                         reason=(
                             f"Position aged out: held {days_held}d, "
                             f"max horizon {max_days}d"
