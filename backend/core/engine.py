@@ -320,9 +320,7 @@ class StrategyEngine:
             # and attach a diagnostic message for the API layer.
             diagnostic: str | None = None
             if not output.positions:
-                diagnostic = self._diagnose_empty_output(
-                    output, market_data, ctx
-                )
+                diagnostic = self._diagnose_empty_output(output, market_data, ctx)
                 if diagnostic:
                     logger.warning(
                         "Agent %s: 0 positions — %s", ctx.agent_id, diagnostic
@@ -718,33 +716,24 @@ class StrategyEngine:
             )
 
         # Check for fundamental data availability
-        has_price = sum(
-            1 for d in market_data.values() if d.get("current_price")
-        )
-        has_pe = sum(
-            1 for d in market_data.values() if d.get("pe_ratio") is not None
-        )
-        has_roe = sum(
-            1 for d in market_data.values() if d.get("roe") is not None
-        )
+        has_price = sum(1 for d in market_data.values() if d.get("current_price"))
+        has_pe = sum(1 for d in market_data.values() if d.get("pe_ratio") is not None)
+        has_roe = sum(1 for d in market_data.values() if d.get("roe") is not None)
         has_div = sum(
-            1 for d in market_data.values()
+            1
+            for d in market_data.values()
             if d.get("dividend_yield") is not None
             and (d.get("dividend_yield") or 0) > 0
         )
         has_history = sum(
-            1
-            for d in market_data.values()
-            if len(d.get("price_history", [])) >= 21
+            1 for d in market_data.values() if len(d.get("price_history", [])) >= 21
         )
 
         problems = []
         if has_price == 0:
             problems.append("no stocks have current price data")
         if has_pe == 0 and has_roe == 0:
-            problems.append(
-                "no stocks have fundamental data (P/E, ROE, margins)"
-            )
+            problems.append("no stocks have fundamental data (P/E, ROE, margins)")
         if has_div == 0 and ctx.strategy_type == "dividend_growth":
             problems.append("no stocks have dividend yield data")
         if has_history == 0:
@@ -756,9 +745,7 @@ class StrategyEngine:
         # Also check signal count
         n_signals = len(output.signals_used) if output else 0
         if n_signals == 0:
-            problems.append(
-                "no trading signals could be generated from available data"
-            )
+            problems.append("no trading signals could be generated from available data")
 
         if problems:
             detail = "; ".join(problems)
