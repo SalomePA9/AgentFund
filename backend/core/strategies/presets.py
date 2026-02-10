@@ -491,23 +491,23 @@ STRATEGY_PRESETS = {
 }
 
 
-def get_preset(name: str, **kwargs) -> StrategyConfig:
+def get_preset(preset_name: str, **kwargs) -> StrategyConfig:
     """
     Get a strategy preset by name.
 
     Args:
-        name: Preset name (momentum, quality_value, etc.)
-        **kwargs: Override default parameters
+        preset_name: Preset name (momentum, quality_value, etc.)
+        **kwargs: Override default parameters (forwarded to the preset factory)
 
     Returns:
         StrategyConfig instance
     """
-    if name not in STRATEGY_PRESETS:
+    if preset_name not in STRATEGY_PRESETS:
         raise ValueError(
-            f"Unknown preset: {name}. Available: {list(STRATEGY_PRESETS.keys())}"
+            f"Unknown preset: {preset_name}. Available: {list(STRATEGY_PRESETS.keys())}"
         )
 
-    return STRATEGY_PRESETS[name](**kwargs)
+    return STRATEGY_PRESETS[preset_name](**kwargs)
 
 
 def list_presets() -> list[str]:
