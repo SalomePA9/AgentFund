@@ -586,3 +586,138 @@ async def get_agent_performance(
         "open_positions": open_count,
         "closed_positions": closed_count,
     }
+
+
+@router.post("/{agent_id}/run", response_model=dict)
+async def run_agent_strategy(
+    agent_id: UUID,
+    current_user: Annotated[dict, Depends(get_current_user)],
+    db: Annotated[Client, Depends(get_db)],
+):
+    """
+    Manually trigger strategy execution for a single agent.
+
+    Runs the full pipeline: market data fetch, strategy execution,
+    order placement, and position sync.
+    """
+    # Verify agent belongs to user and is active
+    agent_result = (
+        db.table("agents")
+        .select("*")
+        .eq("id", str(agent_id))
+        .eq("user_id", current_user["id"])
+        .execute()
+    )
+
+    if not agent_result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Agent not found",
+        )
+
+    agent = agent_result.data[0]
+    if agent["status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Agent is {agent['status']}, must be active to run strategy",
+        )
+
+    try:
+        from jobs.strategy_execution_job import (
+            execute_orders,
+            fetch_agent_positions,
+            fetch_market_and_sentiment,
+            save_execution_result,
+            sync_agent_cash_balance,
+            sync_positions,
+        )
+        from jobs.strategy_execution_job import (
+            _fetch_macro_overlay_data as fetch_macro,
+        )
+        from core.engine import AgentContext as EngineAgentContext, StrategyEngine
+        from core.macro_risk_overlay import MacroRiskOverlay
+
+        # Fetch shared data
+        market_data, sentiment_data = await fetch_market_and_sentiment(db)
+        macro_data, insider_data, vol_regime_data, short_interest_data = (
+            await fetch_macro(db)
+        )
+
+        # Pre-compute macro overlay
+        pre_overlay = None
+        try:
+            overlay = MacroRiskOverlay()
+            pre_overlay = overlay.compute(
+                macro_data=macro_data,
+                insider_data=insider_data,
+                vol_regime_data=vol_regime_data,
+            )
+        except Exception:
+            logger.warning("Failed to pre-compute overlay", exc_info=True)
+
+        # Build agent context
+        positions = await fetch_agent_positions(db, str(agent_id))
+        ctx = EngineAgentContext(
+            agent_id=str(agent_id),
+            user_id=agent["user_id"],
+            strategy_type=agent["strategy_type"],
+            strategy_params=agent.get("strategy_params", {}),
+            risk_params=agent.get("risk_params", {}),
+            allocated_capital=float(agent.get("allocated_capital", 0)),
+            cash_balance=float(agent.get("cash_balance", 0)),
+            current_positions=positions,
+        )
+
+        # Execute strategy
+        engine = StrategyEngine(db_client=db)
+        result = await engine.execute_for_agent(
+            ctx,
+            market_data=market_data,
+            sentiment_data=sentiment_data,
+            macro_data=macro_data,
+            insider_data=insider_data,
+            vol_regime_data=vol_regime_data,
+            short_interest_data=short_interest_data,
+            pre_computed_overlay=pre_overlay,
+        )
+
+        if result.error:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Strategy execution failed: {result.error}",
+            )
+
+        # Save results and execute orders
+        await save_execution_result(db, result)
+        orders, broker = await execute_orders(db, result, agent, market_data)
+        await sync_positions(db, result, agent, orders, market_data, broker=broker)
+        await sync_agent_cash_balance(db, agent, orders, market_data, result)
+
+        pos_count = (
+            len(result.strategy_output.positions) if result.strategy_output else 0
+        )
+
+        return {
+            "status": "success",
+            "agent_id": str(agent_id),
+            "positions_recommended": pos_count,
+            "orders_placed": len(orders),
+            "order_actions": [
+                {
+                    "symbol": a.symbol,
+                    "action": a.action,
+                    "target_weight": a.target_weight,
+                }
+                for a in result.order_actions
+            ],
+            "regime": result.regime,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Manual strategy execution failed for agent %s", agent_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Strategy execution failed: {str(e)}",
+        )

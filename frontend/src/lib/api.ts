@@ -20,6 +20,7 @@ const REQUEST_TIMEOUT_MS = 60_000; // 60 seconds (Render free tier cold-starts c
 const LOGIN_TIMEOUT_MS = 90_000; // 90 seconds — login is often the first request that wakes the server
 const WARMUP_TIMEOUT_MS = 60_000; // 60 seconds for health-check ping
 const MAX_LOGIN_RETRIES = 2; // retry login up to 2 times after initial attempt
+const MAX_API_RETRIES = 1; // retry API calls once on network errors (cold start recovery)
 
 // ============================================
 // Base Fetch Utility
@@ -68,40 +69,78 @@ async function fetchApi<T>(
   const token =
     typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
 
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(url, {
-      ...fetchOptions,
-      timeoutMs,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
-        ...fetchOptions.headers,
-      },
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(
-        'Request timed out. The server may be starting up — please try again in a moment.'
-      );
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...fetchOptions.headers,
+  };
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= MAX_API_RETRIES; attempt++) {
+    // Back-off before retries: wait 2s before the retry attempt
+    if (attempt > 0) {
+      // Wake the server first, then retry the actual request
+      try {
+        await fetchWithTimeout(`${API_URL}/health`, {
+          timeoutMs: WARMUP_TIMEOUT_MS,
+        });
+      } catch {
+        // Server still waking — proceed with retry anyway
+      }
+      await new Promise((r) => setTimeout(r, 2000));
     }
-    const detail = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Unable to connect to the server (${detail}). Please try again in a moment.`
-    );
+
+    try {
+      const response = await fetchWithTimeout(url, {
+        ...fetchOptions,
+        timeoutMs,
+        headers,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || 'Request failed');
+      }
+
+      // Handle 204 No Content
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      return response.json();
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+      const isNetwork =
+        err instanceof TypeError && /fetch|network/i.test(err.message);
+
+      // Only retry on timeout or network errors (server cold start), not business errors
+      if ((isTimeout || isNetwork) && attempt < MAX_API_RETRIES) {
+        lastError = new Error(
+          'Server may be starting up — retrying...'
+        );
+        continue;
+      }
+
+      // Final attempt or non-retryable error
+      if (isTimeout) {
+        throw new Error(
+          'Request timed out. The server may be starting up — please try again in a moment.'
+        );
+      }
+      if (isNetwork) {
+        throw new Error(
+          `Unable to connect to the server (${err instanceof Error ? err.message : String(err)}). Please try again in a moment.`
+        );
+      }
+
+      // Business/auth error — throw as-is
+      throw err;
+    }
   }
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-    throw new Error(error.detail || 'Request failed');
-  }
-
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json();
+  // Should not reach here, but just in case
+  throw lastError ?? new Error('Request failed after retries');
 }
 
 // ============================================
@@ -284,6 +323,21 @@ export const agents = {
     closed_positions: number;
   }> {
     return fetchApi(`/api/agents/${id}/performance`);
+  },
+
+  async runStrategy(id: string): Promise<{
+    status: string;
+    agent_id: string;
+    positions_recommended: number;
+    orders_placed: number;
+    order_actions: Array<{
+      symbol: string;
+      action: string;
+      target_weight: number;
+    }>;
+    regime: string;
+  }> {
+    return fetchApi(`/api/agents/${id}/run`, { method: 'POST' });
   },
 };
 
