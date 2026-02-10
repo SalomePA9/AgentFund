@@ -38,6 +38,8 @@ export default function AgentDetailPage() {
   const params = useParams();
   const agentId = params.id as string;
   const [activeTab, setActiveTab] = useState('positions');
+  const [isRunning, setIsRunning] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
 
   const { agent, positions, activity, isLoading, error, refetch, pause, resume } =
     useAgent(agentId);
@@ -49,9 +51,6 @@ export default function AgentDetailPage() {
   const days = agent.end_date ? daysRemaining(agent.end_date) : null;
   const openPositions = positions.filter((p) => p.status === 'open');
   const closedPositions = positions.filter((p) => p.status !== 'open');
-
-  const [isRunning, setIsRunning] = useState(false);
-  const [runResult, setRunResult] = useState<string | null>(null);
 
   const handleToggle = async () => {
     try {
