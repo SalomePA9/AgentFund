@@ -130,6 +130,7 @@ async def fetch_market_and_sentiment(
                 "roe": row.get("roe"),
                 "profit_margin": row.get("profit_margin"),
                 "debt_to_equity": row.get("debt_to_equity"),
+                "beta": row.get("beta"),
                 "dividend_yield": row.get("dividend_yield"),
                 "dividend_growth_5y": row.get("dividend_growth_5y"),
                 "ma_30": row.get("ma_30"),
@@ -761,8 +762,14 @@ async def save_execution_result(
     try:
         output = result.strategy_output
 
-        # Log the execution as an activity event
-        if output:
+        # Log the execution as an activity event.
+        # Only record a "rebalance" when the strategy actually recommended
+        # at least one position or there are actionable orders.  Empty runs
+        # (0 positions, 0 actions) should NOT create a rebalance activity
+        # because that would block subsequent runs via the rebalance
+        # frequency gate without any actual trading having occurred.
+        has_positions = output and len(output.positions) > 0
+        if output and (has_positions or has_actions):
             supabase.table("agent_activity").insert(
                 {
                     "agent_id": result.agent_id,

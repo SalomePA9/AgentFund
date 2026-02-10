@@ -66,9 +66,14 @@ export default function AgentDetailPage() {
     setRunResult(null);
     try {
       const result = await api.agents.runStrategy(agentId);
-      setRunResult(
-        `Strategy executed: ${result.positions_recommended} positions recommended, ${result.orders_placed} orders placed`
-      );
+      if (result.positions_recommended === 0 && result.diagnostic) {
+        // Show diagnostic reason when no positions were recommended
+        setRunResult(`Warning: ${result.diagnostic}`);
+      } else {
+        setRunResult(
+          `Strategy executed: ${result.positions_recommended} positions recommended, ${result.orders_placed} orders placed`
+        );
+      }
       // Refresh agent data to reflect new positions/activity
       refetch();
     } catch (err) {
@@ -127,7 +132,9 @@ export default function AgentDetailPage() {
           className={`p-3 rounded-lg text-sm ${
             runResult.startsWith('Failed')
               ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-              : 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : runResult.startsWith('Warning')
+                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                : 'bg-green-500/10 text-green-400 border border-green-500/20'
           }`}
         >
           {runResult}

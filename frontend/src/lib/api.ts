@@ -336,6 +336,7 @@ export const agents = {
       target_weight: number;
     }>;
     regime: string;
+    diagnostic?: string;
   }> {
     return fetchApi(`/api/agents/${id}/run`, { method: 'POST' });
   },
