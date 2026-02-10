@@ -17,6 +17,9 @@ import type {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const REQUEST_TIMEOUT_MS = 60_000; // 60 seconds (Render free tier cold-starts can take 50s+)
+const LOGIN_TIMEOUT_MS = 90_000; // 90 seconds — login is often the first request that wakes the server
+const WARMUP_TIMEOUT_MS = 60_000; // 60 seconds for health-check ping
+const MAX_LOGIN_RETRIES = 2; // retry login up to 2 times after initial attempt
 
 // ============================================
 // Base Fetch Utility
@@ -106,6 +109,21 @@ async function fetchApi<T>(
 // ============================================
 
 export const auth = {
+  /**
+   * Ping the backend health endpoint to wake the server from a cold start.
+   * Resolves true when the server responds, false on timeout/error.
+   */
+  async warmUp(): Promise<boolean> {
+    try {
+      const res = await fetchWithTimeout(`${API_URL}/health`, {
+        timeoutMs: WARMUP_TIMEOUT_MS,
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   async register(email: string, password: string): Promise<User> {
     return fetchApi('/api/auth/register', {
       method: 'POST',
@@ -121,37 +139,58 @@ export const auth = {
     formData.append('username', email);
     formData.append('password', password);
 
-    let response: Response;
-    try {
-      response = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData,
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        throw new Error(
-          'Request timed out. The server may be starting up — please try again in a moment.'
-        );
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= MAX_LOGIN_RETRIES; attempt++) {
+      // Exponential back-off pause before retries (0 s, 2 s, 4 s)
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, attempt * 2000));
       }
-      throw new Error(
-        'Unable to connect to the server. Please try again in a moment.'
-      );
+
+      try {
+        const response = await fetchWithTimeout(`${API_URL}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formData,
+          timeoutMs: LOGIN_TIMEOUT_MS,
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ detail: 'Login failed' }));
+          // Don't retry on auth errors (wrong password, etc.) — only on server issues
+          throw new Error(error.detail || 'Login failed');
+        }
+
+        const data = await response.json();
+
+        // Store token
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('auth_token', data.access_token);
+        }
+
+        return data;
+      } catch (err) {
+        const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+        const isNetwork =
+          err instanceof TypeError && /fetch|network/i.test(err.message);
+
+        // Only retry on timeout or network errors, not on auth/business errors
+        if (isTimeout || isNetwork) {
+          lastError = new Error(
+            'Request timed out. The server may be starting up — retrying...'
+          );
+          continue;
+        }
+
+        // Auth or business error — don't retry
+        throw err;
+      }
     }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Login failed' }));
-      throw new Error(error.detail || 'Login failed');
-    }
-
-    const data = await response.json();
-
-    // Store token
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('auth_token', data.access_token);
-    }
-
-    return data;
+    // All retries exhausted
+    throw lastError ?? new Error(
+      'Unable to connect to the server after multiple attempts. Please try again later.'
+    );
   },
 
   logout(): void {
