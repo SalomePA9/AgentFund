@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAgent } from '@/hooks/useAgents';
 import { useAgentReports } from '@/hooks/useReports';
+import { api } from '@/lib/api';
 import {
   PageLoading,
   ErrorMessage,
@@ -37,6 +38,8 @@ export default function AgentDetailPage() {
   const params = useParams();
   const agentId = params.id as string;
   const [activeTab, setActiveTab] = useState('positions');
+  const [isRunning, setIsRunning] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
 
   const { agent, positions, activity, isLoading, error, refetch, pause, resume } =
     useAgent(agentId);
@@ -55,6 +58,25 @@ export default function AgentDetailPage() {
       else if (agent.status === 'paused') await resume();
     } catch {
       // Error is already set in the hook
+    }
+  };
+
+  const handleRunStrategy = async () => {
+    setIsRunning(true);
+    setRunResult(null);
+    try {
+      const result = await api.agents.runStrategy(agentId);
+      setRunResult(
+        `Strategy executed: ${result.positions_recommended} positions recommended, ${result.orders_placed} orders placed`
+      );
+      // Refresh agent data to reflect new positions/activity
+      refetch();
+    } catch (err) {
+      setRunResult(
+        `Failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    } finally {
+      setIsRunning(false);
     }
   };
 
@@ -79,6 +101,15 @@ export default function AgentDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {agent.status === 'active' && (
+            <button
+              onClick={handleRunStrategy}
+              disabled={isRunning}
+              className="btn btn-secondary"
+            >
+              {isRunning ? 'Running...' : 'Run Strategy'}
+            </button>
+          )}
           <Link href={`/agents/${agentId}/chat`} className="btn btn-secondary">
             Chat
           </Link>
@@ -89,6 +120,19 @@ export default function AgentDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Run Result Notification */}
+      {runResult && (
+        <div
+          className={`p-3 rounded-lg text-sm ${
+            runResult.startsWith('Failed')
+              ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+              : 'bg-green-500/10 text-green-400 border border-green-500/20'
+          }`}
+        >
+          {runResult}
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
