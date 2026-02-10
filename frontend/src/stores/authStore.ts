@@ -2,12 +2,15 @@ import { create } from 'zustand';
 import type { User } from '@/types';
 import { api } from '@/lib/api';
 
+export type LoginPhase = 'idle' | 'warming-up' | 'signing-in';
+
 interface AuthState {
   user: User | null;
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
+  loginPhase: LoginPhase;
 
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
@@ -22,10 +25,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   isAuthenticated: false,
   error: null,
+  loginPhase: 'idle',
 
   login: async (email: string, password: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, loginPhase: 'warming-up' });
     try {
+      // Wake the Render backend before sending credentials
+      await api.auth.warmUp();
+
+      set({ loginPhase: 'signing-in' });
       const data = await api.auth.login(email, password);
       set({ token: data.access_token });
       try {
@@ -39,7 +47,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       throw err;
     } finally {
-      set({ isLoading: false });
+      set({ isLoading: false, loginPhase: 'idle' });
     }
   },
 
