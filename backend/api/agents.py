@@ -623,6 +623,10 @@ async def run_agent_strategy(
         )
 
     try:
+        from core.engine import AgentContext as EngineAgentContext
+        from core.engine import StrategyEngine
+        from core.macro_risk_overlay import MacroRiskOverlay
+        from jobs.strategy_execution_job import _fetch_macro_overlay_data as fetch_macro
         from jobs.strategy_execution_job import (
             execute_orders,
             fetch_agent_positions,
@@ -631,11 +635,6 @@ async def run_agent_strategy(
             sync_agent_cash_balance,
             sync_positions,
         )
-        from jobs.strategy_execution_job import (
-            _fetch_macro_overlay_data as fetch_macro,
-        )
-        from core.engine import AgentContext as EngineAgentContext, StrategyEngine
-        from core.macro_risk_overlay import MacroRiskOverlay
 
         # Fetch shared data
         market_data, sentiment_data = await fetch_market_and_sentiment(db)
