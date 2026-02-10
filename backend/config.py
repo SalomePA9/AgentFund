@@ -103,6 +103,9 @@ class Settings(BaseSettings):
         "https://agent-fund-one.vercel.app",
     ]
 
+    # Regex to match Vercel preview/staging deployment URLs
+    cors_origin_regex: str = r"https://.*\.vercel\.app"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
