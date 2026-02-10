@@ -219,16 +219,13 @@ class StrategyEngine:
             if market_data is None or sentiment_data is None:
                 market_data, sentiment_data = await self._fetch_data(ctx)
 
-            # Step 2b: Validate that market data is available.
-            # Without market data the strategy has no universe to analyse.
             if not market_data:
-                msg = (
-                    "No market data available. The data pipeline may not have "
-                    "run yet. Please ensure the market data job has executed "
-                    "at least once before running a strategy."
+                logger.warning(
+                    "Agent %s: stocks table is empty — strategy will run "
+                    "with no universe (diagnostic will explain)",
+                    ctx.agent_id,
                 )
-                logger.warning("Agent %s: %s", ctx.agent_id, msg)
-                return ExecutionResult(agent_id=ctx.agent_id, error=msg)
+                market_data = {}
 
             # Step 3: Enrich sentiment with temporal history
             temporal = TemporalSentimentAnalyzer(db_client=self._db)
