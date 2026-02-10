@@ -128,6 +128,7 @@ class ExecutionResult:
     order_actions: list[OrderAction] = field(default_factory=list)
     regime: str = "neutral"
     error: str | None = None
+    diagnostic: str | None = None  # Human-readable explanation when 0 positions
     executed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     macro_overlay: OverlayResult | None = None
 
@@ -160,6 +161,7 @@ class StrategyEngine:
         vol_regime_data: dict[str, Any] | None = None,
         short_interest_data: dict[str, dict[str, Any]] | None = None,
         pre_computed_overlay: "OverlayResult | None" = None,
+        skip_rebalance_check: bool = False,
     ) -> ExecutionResult:
         """
         Run the full strategy pipeline for a single agent.
@@ -196,10 +198,13 @@ class StrategyEngine:
 
             # Step 0b: Rebalance frequency gate — skip execution if the
             # agent has already rebalanced within its configured period.
-            skip_reason = self._check_rebalance_frequency(ctx)
-            if skip_reason:
-                logger.info("Agent %s: skipping — %s", ctx.agent_id, skip_reason)
-                return ExecutionResult(agent_id=ctx.agent_id, error=skip_reason)
+            # Manual runs (via "Run Strategy" button) bypass this gate so
+            # the user can always re-run on demand.
+            if not skip_rebalance_check:
+                skip_reason = self._check_rebalance_frequency(ctx)
+                if skip_reason:
+                    logger.info("Agent %s: skipping — %s", ctx.agent_id, skip_reason)
+                    return ExecutionResult(agent_id=ctx.agent_id, error=skip_reason)
 
             # Step 1: Resolve strategy config from agent settings
             config = self._resolve_strategy_config(ctx)
@@ -213,6 +218,17 @@ class StrategyEngine:
             # Step 2: Fetch data if not pre-supplied
             if market_data is None or sentiment_data is None:
                 market_data, sentiment_data = await self._fetch_data(ctx)
+
+            # Step 2b: Validate that market data is available.
+            # Without market data the strategy has no universe to analyse.
+            if not market_data:
+                msg = (
+                    "No market data available. The data pipeline may not have "
+                    "run yet. Please ensure the market data job has executed "
+                    "at least once before running a strategy."
+                )
+                logger.warning("Agent %s: %s", ctx.agent_id, msg)
+                return ExecutionResult(agent_id=ctx.agent_id, error=msg)
 
             # Step 3: Enrich sentiment with temporal history
             temporal = TemporalSentimentAnalyzer(db_client=self._db)
@@ -299,6 +315,18 @@ class StrategyEngine:
                     for p in ctx.current_positions
                 },
             )
+
+            # Step 6a: If the strategy produced no positions, diagnose why
+            # and attach a diagnostic message for the API layer.
+            diagnostic: str | None = None
+            if not output.positions:
+                diagnostic = self._diagnose_empty_output(
+                    output, market_data, ctx
+                )
+                if diagnostic:
+                    logger.warning(
+                        "Agent %s: 0 positions — %s", ctx.agent_id, diagnostic
+                    )
 
             # Collect integrated composites for logging / ranking
             integrated_scores = {
@@ -417,6 +445,7 @@ class StrategyEngine:
                 integrated_scores=integrated_scores,
                 order_actions=order_actions,
                 regime=regime,
+                diagnostic=diagnostic,
                 macro_overlay=overlay_result,
             )
 
@@ -662,6 +691,89 @@ class StrategyEngine:
                 parts.append(f"Horizon: {pos.max_holding_days}d")
 
             action.reason = " | ".join(parts)
+
+    # ------------------------------------------------------------------
+    # Diagnostics for empty output
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _diagnose_empty_output(
+        output: "StrategyOutput",
+        market_data: dict[str, dict[str, Any]],
+        ctx: AgentContext,
+    ) -> str | None:
+        """
+        When a strategy produces 0 positions, inspect the market data
+        and signals to determine the most likely cause and return a
+        human-readable diagnostic message.
+
+        Returns None if the empty output is expected (e.g. no current
+        positions and no recommendations is a valid neutral stance).
+        """
+        total_symbols = len(market_data)
+        if total_symbols == 0:
+            return (
+                "No market data available. The data pipeline may not have "
+                "run yet. Please ensure the market data job has executed."
+            )
+
+        # Check for fundamental data availability
+        has_price = sum(
+            1 for d in market_data.values() if d.get("current_price")
+        )
+        has_pe = sum(
+            1 for d in market_data.values() if d.get("pe_ratio") is not None
+        )
+        has_roe = sum(
+            1 for d in market_data.values() if d.get("roe") is not None
+        )
+        has_div = sum(
+            1 for d in market_data.values()
+            if d.get("dividend_yield") is not None
+            and (d.get("dividend_yield") or 0) > 0
+        )
+        has_history = sum(
+            1
+            for d in market_data.values()
+            if len(d.get("price_history", [])) >= 21
+        )
+
+        problems = []
+        if has_price == 0:
+            problems.append("no stocks have current price data")
+        if has_pe == 0 and has_roe == 0:
+            problems.append(
+                "no stocks have fundamental data (P/E, ROE, margins)"
+            )
+        if has_div == 0 and ctx.strategy_type == "dividend_growth":
+            problems.append("no stocks have dividend yield data")
+        if has_history == 0:
+            problems.append(
+                "no stocks have sufficient price history "
+                "(need ≥21 days for volatility signals)"
+            )
+
+        # Also check signal count
+        n_signals = len(output.signals_used) if output else 0
+        if n_signals == 0:
+            problems.append(
+                "no trading signals could be generated from available data"
+            )
+
+        if problems:
+            detail = "; ".join(problems)
+            return (
+                f"Strategy produced 0 positions: {detail}. "
+                f"Data summary: {total_symbols} stocks loaded, "
+                f"{has_price} with prices, {has_pe} with P/E, "
+                f"{has_roe} with ROE, {has_div} with dividends, "
+                f"{has_history} with price history. "
+                f"Run the market data job to populate missing data."
+            )
+
+        # If data looks sufficient but still 0 positions, it might be
+        # a legitimate result (e.g. no attractive opportunities right now).
+        return None
 
     # ------------------------------------------------------------------
     # Cash-constrained position sizing
@@ -1073,6 +1185,7 @@ class StrategyEngine:
                 "roe": row.get("roe"),
                 "profit_margin": row.get("profit_margin"),
                 "debt_to_equity": row.get("debt_to_equity"),
+                "beta": row.get("beta"),
                 "dividend_yield": row.get("dividend_yield"),
                 "dividend_growth_5y": row.get("dividend_growth_5y"),
                 "ma_30": row.get("ma_30"),

@@ -667,7 +667,8 @@ async def run_agent_strategy(
             current_positions=positions,
         )
 
-        # Execute strategy
+        # Execute strategy — skip rebalance frequency check for manual
+        # runs so the user can always re-trigger via the UI button.
         engine = StrategyEngine(db_client=db)
         result = await engine.execute_for_agent(
             ctx,
@@ -678,6 +679,7 @@ async def run_agent_strategy(
             vol_regime_data=vol_regime_data,
             short_interest_data=short_interest_data,
             pre_computed_overlay=pre_overlay,
+            skip_rebalance_check=True,
         )
 
         if result.error:
@@ -696,7 +698,7 @@ async def run_agent_strategy(
             len(result.strategy_output.positions) if result.strategy_output else 0
         )
 
-        return {
+        response = {
             "status": "success",
             "agent_id": str(agent_id),
             "positions_recommended": pos_count,
@@ -711,6 +713,13 @@ async def run_agent_strategy(
             ],
             "regime": result.regime,
         }
+
+        # Include diagnostic when the strategy produced 0 positions
+        # so the frontend can show the user why no trades were made.
+        if result.diagnostic:
+            response["diagnostic"] = result.diagnostic
+
+        return response
 
     except HTTPException:
         raise
