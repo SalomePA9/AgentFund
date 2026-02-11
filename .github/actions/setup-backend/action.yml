@@ -16,12 +16,14 @@ runs:
         cache: 'pip'
         cache-dependency-path: backend/requirements.txt
 
-    - name: Cache Python site-packages
+    - name: Cache Python packages
       uses: actions/cache@v4
       id: site-packages-cache
       with:
-        path: ${{ env.pythonLocation }}/lib/python*/site-packages
-        key: pip-site-${{ runner.os }}-${{ steps.python-version.outputs.version }}-${{ hashFiles('backend/requirements.txt') }}
+        path: |
+          ${{ env.pythonLocation }}/lib/python*/site-packages
+          ${{ env.pythonLocation }}/bin
+        key: pip-v2-${{ runner.os }}-${{ steps.python-version.outputs.version }}-${{ hashFiles('backend/requirements.txt') }}
 
     - name: Install dependencies
       if: steps.site-packages-cache.outputs.cache-hit != 'true'

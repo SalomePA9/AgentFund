@@ -26,10 +26,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check for Vercel token
+        id: check-token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::VERCEL_TOKEN not configured — skipping preview deploy"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Vercel CLI
+        if: steps.check-token.outputs.available == 'true'
         run: npm install -g vercel
 
       - name: Pull Vercel environment
+        if: steps.check-token.outputs.available == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -40,6 +54,7 @@ jobs:
 
       - name: Deploy preview
         id: deploy
+        if: steps.check-token.outputs.available == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
