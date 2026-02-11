@@ -4,9 +4,6 @@ description: 'Checkout, install Node.js, and install frontend dependencies with 
 runs:
   using: 'composite'
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
     - name: Read Node version
       id: node-version
       shell: bash

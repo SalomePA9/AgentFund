@@ -4,9 +4,6 @@ description: 'Checkout, install Python, and install backend dependencies with ca
 runs:
   using: 'composite'
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
     - name: Read Python version
       id: python-version
       shell: bash
