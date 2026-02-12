@@ -192,11 +192,15 @@ async def execute_orders(
         )
         user = user_result.data
     except Exception as e:
-        logger.error("Agent %s: failed to fetch user %s — %s", result.agent_id, user_id, e)
+        logger.error(
+            "Agent %s: failed to fetch user %s — %s", result.agent_id, user_id, e
+        )
         return [], None
 
     if not user:
-        logger.warning("Agent %s: user %s not found — skipping execution", result.agent_id, user_id)
+        logger.warning(
+            "Agent %s: user %s not found — skipping execution", result.agent_id, user_id
+        )
         return [], None
 
     api_key = user.get("alpaca_api_key")
@@ -1051,7 +1055,11 @@ async def run_strategy_execution_job() -> dict:
                 logger.error(
                     "Agent %s (%s): missing required fields "
                     "(id=%s, user_id=%s, strategy_type=%s) — skipping",
-                    agent_id, agent_name, agent_id, user_id, strategy_type,
+                    agent_id,
+                    agent_name,
+                    agent_id,
+                    user_id,
+                    strategy_type,
                 )
                 failures += 1
                 continue
@@ -1139,7 +1147,9 @@ async def run_strategy_execution_job() -> dict:
                 failures += 1
                 logger.exception(
                     "Agent %s (%s): unhandled error — skipping: %s",
-                    agent_id, agent_name, e,
+                    agent_id,
+                    agent_name,
+                    e,
                 )
 
         end_time = datetime.now(timezone.utc)

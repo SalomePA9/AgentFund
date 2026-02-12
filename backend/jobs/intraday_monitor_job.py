@@ -343,7 +343,10 @@ async def run_intraday_monitor() -> dict:
                             {"current_price": live_price}
                         ).eq("id", pos["id"]).execute()
                     except Exception:
-                        logger.debug("Failed to update current_price for position %s", pos.get("id"))
+                        logger.debug(
+                            "Failed to update current_price for position %s",
+                            pos.get("id"),
+                        )
 
                     # Check exit conditions in priority order
                     reason = check_stop_loss(pos, live_price)
