@@ -22,10 +22,7 @@ from core.sentiment_integration import (  # noqa: E402
     SentimentInput,
     TemporalSentimentAnalyzer,
 )
-from database import get_supabase_client  # noqa: E402
-
-# Get database client
-supabase = get_supabase_client()
+from database import supabase  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
