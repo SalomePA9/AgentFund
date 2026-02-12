@@ -786,7 +786,11 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         # Calculate price changes
         if len(hist) >= 2:
             prev_close = hist["Close"].iloc[-2]
-            change_1d = ((current_price - prev_close) / prev_close) * 100
+            change_1d = (
+                ((current_price - prev_close) / prev_close) * 100
+                if prev_close > 0
+                else 0.0
+            )
         else:
             change_1d = 0.0
 
