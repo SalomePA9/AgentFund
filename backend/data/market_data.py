@@ -786,13 +786,17 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         # Calculate price changes
         if len(hist) >= 2:
             prev_close = hist["Close"].iloc[-2]
-            change_1d = ((current_price - prev_close) / prev_close) * 100
+            change_1d = (
+                ((current_price - prev_close) / prev_close) * 100
+                if prev_close > 0
+                else 0.0
+            )
         else:
             change_1d = 0.0
 
-        # Calculate 52-week metrics
-        high_52w = hist["High"].max() if len(hist) >= 252 else hist["High"].max()
-        low_52w = hist["Low"].min() if len(hist) >= 252 else hist["Low"].min()
+        # Calculate 52-week metrics (None when less than a full year of data)
+        high_52w = hist["High"].max() if len(hist) >= 252 else None
+        low_52w = hist["Low"].min() if len(hist) >= 252 else None
 
         # Calculate volume metrics
         avg_volume = hist["Volume"].mean() if len(hist) > 0 else None

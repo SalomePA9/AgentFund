@@ -78,8 +78,8 @@ def _check_market_open(broker) -> bool:
         clock = broker.is_market_open()
         return clock.get("is_open", False)
     except Exception:
-        logger.warning("Failed to check market hours — assuming open")
-        return True
+        logger.error("Failed to check market hours — assuming closed", exc_info=True)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +343,10 @@ async def run_intraday_monitor() -> dict:
                             {"current_price": live_price}
                         ).eq("id", pos["id"]).execute()
                     except Exception:
-                        pass
+                        logger.debug(
+                            "Failed to update current_price for position %s",
+                            pos.get("id"),
+                        )
 
                     # Check exit conditions in priority order
                     reason = check_stop_loss(pos, live_price)

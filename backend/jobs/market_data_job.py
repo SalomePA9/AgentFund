@@ -15,8 +15,6 @@ if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
 from data.market_data import get_stock_universe, run_market_data_update  # noqa: E402
-from jobs.factor_scoring_job import run_factor_scoring_job  # noqa: E402
-from jobs.sentiment_job import run_sentiment_job  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -75,6 +73,8 @@ async def run_daily_market_update():
         logger.info("STARTING FACTOR SCORING JOB")
         logger.info("=" * 60)
 
+        from jobs.factor_scoring_job import run_factor_scoring_job
+
         factor_summary = await run_factor_scoring_job()
 
         logger.info("")
@@ -89,6 +89,8 @@ async def run_daily_market_update():
         logger.info("=" * 60)
         logger.info("STARTING SENTIMENT ANALYSIS JOB")
         logger.info("=" * 60)
+
+        from jobs.sentiment_job import run_sentiment_job
 
         sentiment_summary = await run_sentiment_job()
 

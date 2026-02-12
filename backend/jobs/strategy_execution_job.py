@@ -182,14 +182,27 @@ async def execute_orders(
         logger.warning("Agent %s has no user_id — skipping execution", result.agent_id)
         return [], None
 
-    user_result = (
-        supabase.table("users")
-        .select("alpaca_api_key, alpaca_api_secret, alpaca_paper_mode")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
-    user = user_result.data
+    try:
+        user_result = (
+            supabase.table("users")
+            .select("alpaca_api_key, alpaca_api_secret, alpaca_paper_mode")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        user = user_result.data
+    except Exception as e:
+        logger.error(
+            "Agent %s: failed to fetch user %s — %s", result.agent_id, user_id, e
+        )
+        return [], None
+
+    if not user:
+        logger.warning(
+            "Agent %s: user %s not found — skipping execution", result.agent_id, user_id
+        )
+        return [], None
+
     api_key = user.get("alpaca_api_key")
     api_secret = user.get("alpaca_api_secret")
 
@@ -1032,84 +1045,111 @@ async def run_strategy_execution_job() -> dict:
         failures = 0
 
         for agent in agents:
-            agent_id = agent["id"]
+            agent_id = agent.get("id")
+            agent_name = agent.get("name", "?")
 
-            # Build agent context
-            positions = await fetch_agent_positions(supabase, agent_id)
-            ctx = AgentContext(
-                agent_id=agent_id,
-                user_id=agent["user_id"],
-                strategy_type=agent["strategy_type"],
-                strategy_params=agent.get("strategy_params", {}),
-                risk_params=agent.get("risk_params", {}),
-                allocated_capital=float(agent.get("allocated_capital", 0)),
-                cash_balance=float(agent.get("cash_balance", 0)),
-                current_positions=positions,
-            )
-
-            # Run strategy with macro overlay data
-            result = await engine.execute_for_agent(
-                ctx,
-                market_data=market_data,
-                sentiment_data=sentiment_data,
-                macro_data=macro_data,
-                insider_data=insider_data,
-                vol_regime_data=vol_regime_data,
-                short_interest_data=short_interest_data,
-                pre_computed_overlay=pre_overlay,
-            )
-            results.append(result)
-
-            # Persist results and execute orders
-            if result.error:
+            # Validate required fields before processing
+            user_id = agent.get("user_id")
+            strategy_type = agent.get("strategy_type")
+            if not agent_id or not user_id or not strategy_type:
+                logger.error(
+                    "Agent %s (%s): missing required fields "
+                    "(id=%s, user_id=%s, strategy_type=%s) — skipping",
+                    agent_id,
+                    agent_name,
+                    agent_id,
+                    user_id,
+                    strategy_type,
+                )
                 failures += 1
-                logger.warning(
-                    f"Agent {agent_id} ({agent.get('name', '?')}): FAILED — {result.error}"
-                )
-            else:
-                saved = await save_execution_result(supabase, result)
+                continue
 
-                # Forward actionable orders to broker
-                orders, broker = await execute_orders(
-                    supabase, result, agent, market_data
-                )
-
-                # Sync position records (create/update/close in DB)
-                # and place broker-side protective orders for new buys
-                await sync_positions(
-                    supabase,
-                    result,
-                    agent,
-                    orders,
-                    market_data,
-                    broker=broker,
+            try:
+                # Build agent context
+                positions = await fetch_agent_positions(supabase, agent_id)
+                ctx = AgentContext(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    strategy_type=strategy_type,
+                    strategy_params=agent.get("strategy_params", {}),
+                    risk_params=agent.get("risk_params", {}),
+                    allocated_capital=float(agent.get("allocated_capital", 0)),
+                    cash_balance=float(agent.get("cash_balance", 0)),
+                    current_positions=positions,
                 )
 
-                # Update agent's cash_balance based on executed trades
-                await sync_agent_cash_balance(
-                    supabase, agent, orders, market_data, result
+                # Run strategy with macro overlay data
+                result = await engine.execute_for_agent(
+                    ctx,
+                    market_data=market_data,
+                    sentiment_data=sentiment_data,
+                    macro_data=macro_data,
+                    insider_data=insider_data,
+                    vol_regime_data=vol_regime_data,
+                    short_interest_data=short_interest_data,
+                    pre_computed_overlay=pre_overlay,
                 )
+                results.append(result)
 
-                if saved:
-                    successes += 1
-                else:
+                # Persist results and execute orders
+                if result.error:
                     failures += 1
-
-                pos_count = (
-                    len(result.strategy_output.positions)
-                    if result.strategy_output
-                    else 0
-                )
-                overlay_info = ""
-                if result.macro_overlay:
-                    overlay_info = (
-                        f" | macro_scale={result.macro_overlay.risk_scale_factor:.2f}"
-                        f" macro_regime={result.macro_overlay.regime_label}"
+                    logger.warning(
+                        f"Agent {agent_id} ({agent_name}): FAILED — {result.error}"
                     )
-                logger.info(
-                    f"Agent {agent_id} ({agent.get('name', '?')}): "
-                    f"{pos_count} positions, {len(orders)} orders | "
-                    f"regime={result.regime}{overlay_info}"
+                else:
+                    saved = await save_execution_result(supabase, result)
+
+                    # Forward actionable orders to broker
+                    orders, broker = await execute_orders(
+                        supabase, result, agent, market_data
+                    )
+
+                    # Sync position records (create/update/close in DB)
+                    # and place broker-side protective orders for new buys
+                    await sync_positions(
+                        supabase,
+                        result,
+                        agent,
+                        orders,
+                        market_data,
+                        broker=broker,
+                    )
+
+                    # Update agent's cash_balance based on executed trades
+                    await sync_agent_cash_balance(
+                        supabase, agent, orders, market_data, result
+                    )
+
+                    if saved:
+                        successes += 1
+                    else:
+                        failures += 1
+
+                    pos_count = (
+                        len(result.strategy_output.positions)
+                        if result.strategy_output
+                        else 0
+                    )
+                    overlay_info = ""
+                    if result.macro_overlay:
+                        overlay_info = (
+                            f" | macro_scale={result.macro_overlay.risk_scale_factor:.2f}"
+                            f" macro_regime={result.macro_overlay.regime_label}"
+                        )
+                    logger.info(
+                        f"Agent {agent_id} ({agent_name}): "
+                        f"{pos_count} positions, {len(orders)} orders | "
+                        f"regime={result.regime}{overlay_info}"
+                    )
+
+            except Exception as e:
+                failures += 1
+                logger.exception(
+                    "Agent %s (%s): unhandled error — skipping: %s",
+                    agent_id,
+                    agent_name,
+                    e,
                 )
 
         end_time = datetime.now(timezone.utc)

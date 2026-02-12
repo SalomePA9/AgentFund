@@ -181,6 +181,38 @@ jobs:
     if: failure()
 
     steps:
-      - name: Send failure notification
-        run: |
-          echo "Daily job failed - implement notification (email/slack) here"
+      - name: Create failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs = [
+              { name: 'update-market-data', result: '${{ needs.update-market-data.result }}' },
+              { name: 'update-sentiment', result: '${{ needs.update-sentiment.result }}' },
+              { name: 'collect-macro-data', result: '${{ needs.collect-macro-data.result }}' },
+              { name: 'calculate-factors', result: '${{ needs.calculate-factors.result }}' },
+              { name: 'process-agents', result: '${{ needs.process-agents.result }}' },
+              { name: 'generate-reports', result: '${{ needs.generate-reports.result }}' },
+            ];
+            const failed = jobs.filter(j => j.result === 'failure');
+            const skipped = jobs.filter(j => j.result === 'skipped');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().split('T')[0];
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Daily pipeline failure — ${today}`,
+              labels: ['bug', 'pipeline'],
+              body: [
+                `## Daily Pipeline Failure`,
+                ``,
+                `**Date:** ${today}`,
+                `**Run:** ${runUrl}`,
+                ``,
+                `### Failed jobs`,
+                failed.length ? failed.map(j => `- \`${j.name}\``).join('\n') : '_None_',
+                ``,
+                `### Skipped jobs (due to upstream failure)`,
+                skipped.length ? skipped.map(j => `- \`${j.name}\``).join('\n') : '_None_',
+              ].join('\n'),
+            });
