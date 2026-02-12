@@ -78,8 +78,8 @@ def _check_market_open(broker) -> bool:
         clock = broker.is_market_open()
         return clock.get("is_open", False)
     except Exception:
-        logger.warning("Failed to check market hours — assuming open")
-        return True
+        logger.error("Failed to check market hours — assuming closed", exc_info=True)
+        return False
 
 
 # ---------------------------------------------------------------------------
