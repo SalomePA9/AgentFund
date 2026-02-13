@@ -62,9 +62,9 @@ async def run_sentiment_job(
     logger.info("=" * 60)
 
     start_time = datetime.utcnow()
-    supabase = get_supabase_client()
 
     try:
+        supabase = get_supabase_client()
         # Get symbols to process
         if symbols is None:
             logger.info("Fetching stock symbols from database...")

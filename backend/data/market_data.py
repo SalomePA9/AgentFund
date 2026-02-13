@@ -897,6 +897,201 @@ async def fetch_stock_data_async(
 
 
 # =============================================================================
+# Batch Data Fetching (yf.download)
+# =============================================================================
+
+
+def fetch_batch_price_data(
+    tickers: list[str], period: str = "1y"
+) -> dict[str, pd.DataFrame]:
+    """
+    Batch-download OHLCV data for multiple tickers using yf.download().
+
+    This makes far fewer HTTP requests than individual Ticker.history() calls,
+    making it much more resilient to Yahoo Finance rate-limiting on shared IPs
+    (e.g. GitHub Actions).
+
+    Args:
+        tickers: List of ticker symbols
+        period: Data period (e.g., "1y")
+
+    Returns:
+        Dict mapping ticker -> DataFrame of OHLCV data
+    """
+    if not tickers:
+        return {}
+
+    try:
+        data = yf.download(
+            tickers,
+            period=period,
+            group_by="ticker",
+            threads=True,
+            progress=False,
+        )
+
+        if data.empty:
+            logger.warning("Batch download returned empty DataFrame")
+            return {}
+
+        result = {}
+
+        if len(tickers) == 1:
+            # Single ticker returns flat DataFrame (no MultiIndex)
+            ticker = tickers[0]
+            if isinstance(data.columns, pd.MultiIndex):
+                try:
+                    ticker_data = data[ticker].dropna(how="all")
+                    if not ticker_data.empty:
+                        result[ticker] = ticker_data
+                except KeyError:
+                    pass
+            else:
+                if not data.empty:
+                    result[ticker] = data
+        else:
+            # Multiple tickers: MultiIndex columns (ticker, field)
+            for ticker in tickers:
+                try:
+                    ticker_data = data[ticker].dropna(how="all")
+                    if not ticker_data.empty:
+                        result[ticker] = ticker_data
+                except (KeyError, AttributeError):
+                    continue
+
+        logger.info(
+            f"Batch download: {len(result)}/{len(tickers)} tickers returned data"
+        )
+        return result
+
+    except Exception as e:
+        logger.error(f"Batch download error: {e}")
+        return {}
+
+
+def build_stock_record(ticker: str, hist: pd.DataFrame) -> dict[str, Any] | None:
+    """
+    Build a stock data record from a historical price DataFrame.
+
+    Computes technical indicators (MAs, ATR, momentum) from OHLCV data.
+    Fundamental data (P/E, ROE, etc.) is not available from batch downloads
+    and will be set to None.
+
+    Args:
+        ticker: Stock ticker symbol
+        hist: DataFrame with OHLCV columns
+
+    Returns:
+        Stock data dictionary or None if data is insufficient
+    """
+    if hist.empty:
+        return None
+
+    try:
+        current_price = float(hist["Close"].iloc[-1])
+        if pd.isna(current_price) or current_price <= 0:
+            return None
+
+        # Moving averages
+        ma_30 = (
+            hist["Close"].rolling(window=30).mean().iloc[-1]
+            if len(hist) >= 30
+            else None
+        )
+        ma_100 = (
+            hist["Close"].rolling(window=100).mean().iloc[-1]
+            if len(hist) >= 100
+            else None
+        )
+        ma_200 = (
+            hist["Close"].rolling(window=200).mean().iloc[-1]
+            if len(hist) >= 200
+            else None
+        )
+
+        # ATR (14-day Average True Range)
+        atr = None
+        if len(hist) >= 14:
+            high = hist["High"]
+            low = hist["Low"]
+            close = hist["Close"].shift(1)
+            tr1 = high - low
+            tr2 = abs(high - close)
+            tr3 = abs(low - close)
+            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr = true_range.rolling(window=14).mean().iloc[-1]
+
+        # Daily price change
+        change_1d = 0.0
+        if len(hist) >= 2:
+            prev_close = float(hist["Close"].iloc[-2])
+            if prev_close > 0:
+                change_1d = ((current_price - prev_close) / prev_close) * 100
+
+        # 52-week metrics
+        high_52w = float(hist["High"].max()) if len(hist) >= 252 else None
+        low_52w = float(hist["Low"].min()) if len(hist) >= 252 else None
+
+        # Volume
+        avg_volume = hist["Volume"].mean() if len(hist) > 0 else None
+        volume_today = hist["Volume"].iloc[-1] if len(hist) > 0 else None
+
+        # Momentum
+        momentum_6m = None
+        momentum_12m = None
+        if len(hist) >= 126:
+            price_6m_ago = float(hist["Close"].iloc[-126])
+            if price_6m_ago > 0:
+                momentum_6m = (current_price - price_6m_ago) / price_6m_ago
+        if len(hist) >= 252:
+            price_12m_ago = float(hist["Close"].iloc[-252])
+            if price_12m_ago > 0:
+                momentum_12m = (current_price - price_12m_ago) / price_12m_ago
+
+        return {
+            "symbol": ticker,
+            "name": ticker,
+            "sector": None,
+            "industry": None,
+            "price": round(current_price, 2),
+            "change_percent": round(change_1d, 2),
+            "market_cap": None,
+            "pe_ratio": None,
+            "pb_ratio": None,
+            "dividend_yield": None,
+            "eps": None,
+            "beta": None,
+            "ma_30": round(float(ma_30), 2) if ma_30 is not None and not pd.isna(ma_30) else None,
+            "ma_100": round(float(ma_100), 2) if ma_100 is not None and not pd.isna(ma_100) else None,
+            "ma_200": round(float(ma_200), 2) if ma_200 is not None and not pd.isna(ma_200) else None,
+            "atr": round(float(atr), 4) if atr is not None and not pd.isna(atr) else None,
+            "high_52w": round(high_52w, 2) if high_52w is not None else None,
+            "low_52w": round(low_52w, 2) if low_52w is not None else None,
+            "avg_volume": int(avg_volume) if avg_volume is not None and not pd.isna(avg_volume) else None,
+            "volume": int(volume_today) if volume_today is not None and not pd.isna(volume_today) else None,
+            "roe": None,
+            "profit_margin": None,
+            "debt_to_equity": None,
+            "momentum_6m": (
+                round(float(momentum_6m), 4)
+                if momentum_6m is not None and not pd.isna(momentum_6m)
+                else None
+            ),
+            "momentum_12m": (
+                round(float(momentum_12m), 4)
+                if momentum_12m is not None and not pd.isna(momentum_12m)
+                else None
+            ),
+            "dividend_growth_5y": None,
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Error building record for {ticker}: {e}")
+        return None
+
+
+# =============================================================================
 # Batch Processing
 # =============================================================================
 
@@ -905,11 +1100,14 @@ async def process_stock_batch(
     tickers: list[str], batch_size: int = 50, progress_callback: callable = None
 ) -> tuple[list[dict], list[str]]:
     """
-    Process a batch of stocks with rate limiting.
+    Process a batch of stocks using yf.download() for efficient batch fetching.
+
+    Uses batch downloads instead of individual ticker requests to minimize
+    HTTP requests and avoid Yahoo Finance rate-limiting on shared IPs.
 
     Args:
         tickers: List of ticker symbols
-        batch_size: Number of concurrent requests
+        batch_size: Number of tickers per batch download
         progress_callback: Optional callback for progress updates
 
     Returns:
@@ -922,18 +1120,20 @@ async def process_stock_batch(
     for i in range(0, total, batch_size):
         batch = tickers[i : i + batch_size]
 
-        # Process batch with limited concurrency
-        tasks = [fetch_stock_data_async(ticker) for ticker in batch]
-        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Batch download price data (single HTTP request per batch)
+        price_data = await asyncio.to_thread(fetch_batch_price_data, batch, "1y")
 
-        for ticker, result in zip(batch, batch_results):
-            if isinstance(result, Exception):
-                logger.error(f"Exception for {ticker}: {result}")
+        for ticker in batch:
+            hist = price_data.get(ticker)
+            if hist is None or (isinstance(hist, pd.DataFrame) and hist.empty):
                 failed.append(ticker)
-            elif result is None:
-                failed.append(ticker)
+                continue
+
+            record = build_stock_record(ticker, hist)
+            if record:
+                results.append(record)
             else:
-                results.append(result)
+                failed.append(ticker)
 
         # Progress callback
         processed = min(i + batch_size, total)
@@ -944,9 +1144,9 @@ async def process_stock_batch(
             f"Processed {processed}/{total} stocks ({len(results)} success, {len(failed)} failed)"
         )
 
-        # Small delay between batches to be nice to the API
+        # Delay between batches to respect rate limits
         if i + batch_size < total:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(2.0)
 
     return results, failed
 

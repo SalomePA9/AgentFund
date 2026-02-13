@@ -73,9 +73,13 @@ async def run_daily_market_update():
         logger.info("STARTING FACTOR SCORING JOB")
         logger.info("=" * 60)
 
-        from jobs.factor_scoring_job import run_factor_scoring_job
+        try:
+            from jobs.factor_scoring_job import run_factor_scoring_job
 
-        factor_summary = await run_factor_scoring_job()
+            factor_summary = await run_factor_scoring_job()
+        except Exception as e:
+            logger.error(f"Factor scoring job failed: {e}")
+            factor_summary = {"status": "error", "error": str(e)}
 
         logger.info("")
         logger.info("=" * 60)
@@ -90,9 +94,13 @@ async def run_daily_market_update():
         logger.info("STARTING SENTIMENT ANALYSIS JOB")
         logger.info("=" * 60)
 
-        from jobs.sentiment_job import run_sentiment_job
+        try:
+            from jobs.sentiment_job import run_sentiment_job
 
-        sentiment_summary = await run_sentiment_job()
+            sentiment_summary = await run_sentiment_job()
+        except Exception as e:
+            logger.error(f"Sentiment job failed: {e}")
+            sentiment_summary = {"status": "error", "error": str(e)}
 
         logger.info("")
         logger.info("=" * 60)
@@ -107,7 +115,7 @@ async def run_daily_market_update():
         if "averages" in sentiment_summary:
             logger.info(f"Averages: {sentiment_summary['averages']}")
 
-        # Return exit code based on success rate
+        # Return exit code based on market data success rate
         if success_rate >= 90:
             logger.info("JOB COMPLETED SUCCESSFULLY")
             return 0
