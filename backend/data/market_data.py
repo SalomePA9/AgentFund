@@ -1061,14 +1061,36 @@ def build_stock_record(ticker: str, hist: pd.DataFrame) -> dict[str, Any] | None
             "dividend_yield": None,
             "eps": None,
             "beta": None,
-            "ma_30": round(float(ma_30), 2) if ma_30 is not None and not pd.isna(ma_30) else None,
-            "ma_100": round(float(ma_100), 2) if ma_100 is not None and not pd.isna(ma_100) else None,
-            "ma_200": round(float(ma_200), 2) if ma_200 is not None and not pd.isna(ma_200) else None,
-            "atr": round(float(atr), 4) if atr is not None and not pd.isna(atr) else None,
+            "ma_30": (
+                round(float(ma_30), 2)
+                if ma_30 is not None and not pd.isna(ma_30)
+                else None
+            ),
+            "ma_100": (
+                round(float(ma_100), 2)
+                if ma_100 is not None and not pd.isna(ma_100)
+                else None
+            ),
+            "ma_200": (
+                round(float(ma_200), 2)
+                if ma_200 is not None and not pd.isna(ma_200)
+                else None
+            ),
+            "atr": (
+                round(float(atr), 4) if atr is not None and not pd.isna(atr) else None
+            ),
             "high_52w": round(high_52w, 2) if high_52w is not None else None,
             "low_52w": round(low_52w, 2) if low_52w is not None else None,
-            "avg_volume": int(avg_volume) if avg_volume is not None and not pd.isna(avg_volume) else None,
-            "volume": int(volume_today) if volume_today is not None and not pd.isna(volume_today) else None,
+            "avg_volume": (
+                int(avg_volume)
+                if avg_volume is not None and not pd.isna(avg_volume)
+                else None
+            ),
+            "volume": (
+                int(volume_today)
+                if volume_today is not None and not pd.isna(volume_today)
+                else None
+            ),
             "roe": None,
             "profit_margin": None,
             "debt_to_equity": None,
