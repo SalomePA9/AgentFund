@@ -182,34 +182,28 @@ class AlertTemplate(BaseTemplate):
         if not data.ticker:
             return ""
 
-        rows = [
-            f"""
+        rows = [f"""
             <tr>
                 <td style="border: none; padding: 8px 0; color: {cls.COLORS['text_muted']};">Ticker</td>
                 <td style="border: none; padding: 8px 0; text-align: right; font-weight: 600; font-size: 18px;">{data.ticker}</td>
             </tr>
-            """
-        ]
+            """]
 
         if data.shares is not None:
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="border: none; padding: 8px 0; color: {cls.COLORS['text_muted']};">Shares</td>
                     <td style="border: none; padding: 8px 0; text-align: right;" class="mono">{data.shares:,}</td>
                 </tr>
-            """
-            )
+            """)
 
         if data.entry_price is not None:
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="border: none; padding: 8px 0; color: {cls.COLORS['text_muted']};">Entry Price</td>
                     <td style="border: none; padding: 8px 0; text-align: right;" class="mono">${data.entry_price:,.2f}</td>
                 </tr>
-            """
-            )
+            """)
 
         if data.price is not None:
             label = (
@@ -222,19 +216,16 @@ class AlertTemplate(BaseTemplate):
                 ]
                 else "Price"
             )
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="border: none; padding: 8px 0; color: {cls.COLORS['text_muted']};">{label}</td>
                     <td style="border: none; padding: 8px 0; text-align: right;" class="mono">${data.price:,.2f}</td>
                 </tr>
-            """
-            )
+            """)
 
         if data.pnl is not None:
             pnl_class = "positive" if data.pnl >= 0 else "negative"
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="border: none; padding: 8px 0; color: {cls.COLORS['text_muted']};">P&L</td>
                     <td style="border: none; padding: 8px 0; text-align: right;">
@@ -242,8 +233,7 @@ class AlertTemplate(BaseTemplate):
                         {f'<span class="mono {pnl_class}" style="margin-left: 8px;">({data.pnl_pct:+.2f}%)</span>' if data.pnl_pct is not None else ''}
                     </td>
                 </tr>
-            """
-            )
+            """)
 
         return f"""
         <div class="card">
@@ -263,14 +253,12 @@ class AlertTemplate(BaseTemplate):
         rows = []
         for key, value in data.details.items():
             label = key.replace("_", " ").title()
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="border: none; padding: 8px 0; color: {cls.COLORS['text_muted']};">{label}</td>
                     <td style="border: none; padding: 8px 0; text-align: right;">{value}</td>
                 </tr>
-            """
-            )
+            """)
 
         return f"""
         <div class="card">
