@@ -5,6 +5,7 @@ Fetches stock data from yfinance, calculates moving averages, and stores in Supa
 
 import asyncio
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Any
@@ -23,31 +24,84 @@ logger = logging.getLogger(__name__)
 # Custom HTTP Session (bypass Yahoo Finance IP blocking)
 # =============================================================================
 
+_yf_session: requests.Session | None = None
 
-def _create_yf_session() -> requests.Session:
+
+def _get_yf_session() -> requests.Session:
     """
-    Create a requests.Session with browser-like headers.
+    Get a shared requests.Session with browser-like headers and
+    pre-fetched Yahoo Finance cookies.
 
     Yahoo Finance blocks requests from cloud/CI IPs (e.g. GitHub Actions)
-    when they use default Python User-Agent strings.  Using realistic browser
-    headers avoids this blocking.
+    based on IP ranges AND default User-Agent strings.  This session:
+    1. Uses realistic browser headers (including Sec-Fetch-* headers)
+    2. Pre-warms cookies by visiting fc.yahoo.com (Yahoo's cookie endpoint)
+    3. Pre-fetches a crumb token needed for authenticated API calls
+    4. Is reused across all requests to maintain cookie state
     """
+    global _yf_session
+    if _yf_session is not None:
+        return _yf_session
+
     session = requests.Session()
+
+    # Support proxy via environment variable
+    proxy = os.environ.get("YF_PROXY") or os.environ.get("HTTPS_PROXY")
+    if proxy:
+        session.proxies = {"https": proxy, "http": proxy}
+        logger.info(f"Using proxy for Yahoo Finance: {proxy[:20]}...")
+
     session.headers.update(
         {
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;"
+                "q=0.9,image/avif,image/webp,*/*;q=0.8"
+            ),
             "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate",
+            "Accept-Encoding": "gzip, deflate, br",
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
         }
     )
+
+    # Pre-warm: fetch Yahoo Finance cookie (fc.yahoo.com is Yahoo's cookie
+    # endpoint that yfinance uses internally)
+    try:
+        resp = session.get("https://fc.yahoo.com", timeout=10, allow_redirects=True)
+        cookie_names = list(session.cookies.keys())
+        logger.info(
+            f"Yahoo cookie pre-warm: status={resp.status_code}, "
+            f"cookies={cookie_names}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to pre-warm Yahoo session: {e}")
+
+    # Pre-fetch crumb token (required for Yahoo Finance API calls)
+    try:
+        crumb_resp = session.get(
+            "https://query2.finance.yahoo.com/v1/test/getcrumb",
+            timeout=10,
+        )
+        crumb_text = crumb_resp.text[:30] if crumb_resp.text else "empty"
+        logger.info(
+            f"Yahoo crumb fetch: status={crumb_resp.status_code}, "
+            f"crumb={crumb_text}"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to fetch Yahoo crumb: {e}")
+
+    _yf_session = session
     return session
 
 
@@ -770,7 +824,7 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         Dictionary with stock data or None if fetch fails
     """
     try:
-        session = _create_yf_session()
+        session = _get_yf_session()
         stock = yf.Ticker(ticker, session=session)
 
         # Get historical data for moving averages
@@ -957,12 +1011,12 @@ def fetch_batch_price_data(
         return {}
 
     try:
-        session = _create_yf_session()
+        session = _get_yf_session()
         data = yf.download(
             tickers,
             period=period,
             group_by="ticker",
-            threads=True,
+            threads=False,
             progress=False,
             session=session,
         )

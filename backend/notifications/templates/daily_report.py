@@ -145,34 +145,28 @@ class DailyReportTemplate(BaseTemplate):
         metrics = []
 
         if data.sharpe_ratio is not None:
-            metrics.append(
-                f"""
+            metrics.append(f"""
                 <div class="metric">
                     <div class="metric-label">Sharpe Ratio</div>
                     <div class="metric-value">{cls.format_number(data.sharpe_ratio, 2)}</div>
                 </div>
-            """
-            )
+            """)
 
         if data.win_rate is not None:
-            metrics.append(
-                f"""
+            metrics.append(f"""
                 <div class="metric">
                     <div class="metric-label">Win Rate</div>
                     <div class="metric-value">{cls.format_number(data.win_rate, 1)}%</div>
                 </div>
-            """
-            )
+            """)
 
         if data.max_drawdown is not None:
-            metrics.append(
-                f"""
+            metrics.append(f"""
                 <div class="metric">
                     <div class="metric-label">Max Drawdown</div>
                     <div class="metric-value negative">{cls.format_number(abs(data.max_drawdown), 2)}%</div>
                 </div>
-            """
-            )
+            """)
 
         if not metrics:
             return ""
@@ -294,8 +288,7 @@ class DailyReportTemplate(BaseTemplate):
             current_price = pos.get("current_price") or 0
             pnl_pct = pos.get("unrealized_pnl_pct", 0)
 
-            rows.append(
-                f"""
+            rows.append(f"""
                 <tr>
                     <td style="font-weight: 500;">{ticker}</td>
                     <td class="mono">{shares}</td>
@@ -303,8 +296,7 @@ class DailyReportTemplate(BaseTemplate):
                     <td class="mono">${current_price:,.2f}</td>
                     <td>{cls.format_percent(pnl_pct)}</td>
                 </tr>
-            """
-            )
+            """)
 
         return f"""
         <div class="card">
@@ -364,15 +356,13 @@ class DailyReportTemplate(BaseTemplate):
             else:
                 badge_class = "badge-warning"
 
-            items.append(
-                f"""
+            items.append(f"""
                 <div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid {cls.COLORS['border']};">
                     <span class="badge {badge_class}" style="margin-right: 12px;">{activity_type}</span>
                     <span style="font-weight: 500; margin-right: 8px;">{ticker}</span>
                     <span style="color: {cls.COLORS['text_secondary']}; font-size: 14px;">{details}</span>
                 </div>
-            """
-            )
+            """)
 
         return f"""
         <div class="card">
