@@ -10,12 +10,46 @@ from datetime import datetime
 from typing import Any
 
 import pandas as pd
+import requests
 import yfinance as yf
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from database import supabase
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Custom HTTP Session (bypass Yahoo Finance IP blocking)
+# =============================================================================
+
+
+def _create_yf_session() -> requests.Session:
+    """
+    Create a requests.Session with browser-like headers.
+
+    Yahoo Finance blocks requests from cloud/CI IPs (e.g. GitHub Actions)
+    when they use default Python User-Agent strings.  Using realistic browser
+    headers avoids this blocking.
+    """
+    session = requests.Session()
+    session.headers.update(
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+    )
+    return session
+
 
 # =============================================================================
 # Stock Universe Definition
@@ -736,7 +770,8 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> dict[str, Any] | None:
         Dictionary with stock data or None if fetch fails
     """
     try:
-        stock = yf.Ticker(ticker)
+        session = _create_yf_session()
+        stock = yf.Ticker(ticker, session=session)
 
         # Get historical data for moving averages
         hist = stock.history(period=period)
@@ -922,12 +957,14 @@ def fetch_batch_price_data(
         return {}
 
     try:
+        session = _create_yf_session()
         data = yf.download(
             tickers,
             period=period,
             group_by="ticker",
             threads=True,
             progress=False,
+            session=session,
         )
 
         if data.empty:
